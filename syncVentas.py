@@ -3,8 +3,6 @@ from credenciales import LOCALES_LAKERS
 import Apis
 from consultas import qry_ventasEnc,qry_ventasDetalle
 
-import json
-
 # Crear una instancia de la clase Conexion
 conexion = Conexion(server=LOCALES_LAKERS['server'], database=LOCALES_LAKERS['database'], user=LOCALES_LAKERS['user'], password=LOCALES_LAKERS['password'])
 
@@ -70,17 +68,7 @@ else:
             "Comprobantes": []
         })
         comprobante = []
-        listComp = []
-        # comprobante.append({
-        #     "Fecha": "26-03-2021", 
-        #     "Hora": "18:15:00", 
-        #     "IdComprobante": "02", 
-        #     "PtoVenta": "0001", 
-        #     "NroComprobante": "", 
-        #     "Detalles": [], 
-        #     "Pagos": []
-        # })
-    
+        listComp = []    
 
         for EncVentas in resultados_ventasEnc:
             # Encontrar el detalle del comprobante específico 
@@ -107,12 +95,6 @@ else:
 
         # Agregar cada nuevo comprobante a la lista existente en "Comprobantes"
         data[0]["Comprobantes"].extend(comprobante)
-
-        # # Extraer los números de comprobantes y convertirlos en un string formateado para la consulta SQL
-        # comprobantes = []
-        # for cliente in data:
-        #     for comp in cliente['Comprobantes']:
-        #         comprobantes.append(comp['NroComprobante'])
 
         # Convertir la lista de comprobantes en un string separado por comas y encerrado entre paréntesis
         comprobantes_str = "('" + "', '".join(listComp) + "')"
