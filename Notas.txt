@@ -1,0 +1,9 @@
+Para resolver problemas con los certificados, 
+1- se debe descargar el certificado desde la web https://conectados.fortinmaure.com.ar
+2- Intalar el certificado
+3- Correr el siguiente comando desde la terminal, estando en la carpeta del proyecto y con el entorno virtual activo
+    python -m pip install pip-system-certs
+    Esto importará los certificados teniendo en cuenta su sistema operativo.
+4- Fuente de consulta para este error
+    https://stackoverflow.com/questions/51925384/unable-to-get-local-issuer-certificate-when-using-requests
+
