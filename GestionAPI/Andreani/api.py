@@ -1,6 +1,6 @@
 import requests
 from requests.auth import HTTPBasicAuth
-from credenciales import DATA_QA
+from GestionAPI.common.credenciales import DATA_QA
 
 
 #----------------------------------------------------------------------------------GENERAR EL TOKEN

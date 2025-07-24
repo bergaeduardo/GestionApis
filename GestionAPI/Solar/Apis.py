@@ -1,6 +1,6 @@
 import requests
 import json
-from credenciales import API_SOLAR
+from GestionAPI.common.credenciales import API_SOLAR
 
 def obtenerToken_Solar():
     reqUrl = "https://conectados.fortinmaure.com.ar/SolutionsRE_BackEnd/api/autenticacion/obtenerTokenAcceso"

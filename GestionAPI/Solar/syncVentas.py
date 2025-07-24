@@ -1,7 +1,7 @@
-from conexion import Conexion
-from credenciales import LOCALES_LAKERS
-import Apis
-from consultas import qry_ventasEnc,qry_ventasDetalle
+from GestionAPI.common.conexion import Conexion
+from GestionAPI.common.credenciales import LOCALES_LAKERS
+from GestionAPI.Solar import Apis
+from GestionAPI.Solar.consultas import qry_ventasEnc,qry_ventasDetalle
 
 import json
 

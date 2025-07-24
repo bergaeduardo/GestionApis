@@ -1,5 +1,5 @@
-from andreani_api import AndreaniAPI
-from config.credenciales import DATA_QA  # Asegúrate de tener este archivo
+from GestionAPI.Andreani.andreani_api import AndreaniAPI
+from GestionAPI.common.credenciales import DATA_QA  # Asegúrate de tener este archivo
 
 if __name__ == '__main__':
     # Configuración de credenciales:
@@ -21,7 +21,8 @@ if __name__ == '__main__':
     # parametros_sucursales = {'localidad': 'Cordoba'}
     # sucursales = api.buscar_sucursales(parametros_sucursales)
     # if sucursales:
-    #     print("\nSucursales encontradas:", sucursales)
+    #     print("
+Sucursales encontradas:", sucursales)
     
     # # 2. Obtener Cotización
     # parametros_cotizacion = {
@@ -32,7 +33,8 @@ if __name__ == '__main__':
     # }
     # cotizacion = api.obtener_cotizacion(parametros_cotizacion)
     # if cotizacion:
-    #   print("\nCotización obtenida:", cotizacion)
+    #   print("
+Cotización obtenida:", cotizacion)
     
     # # 3. Crear Orden de Envío
     # data = {
@@ -107,7 +109,8 @@ if __name__ == '__main__':
     #   if numeroEnvio:
     #     estado_orden = api.consultar_estado_orden(numeroEnvio)
     #     if estado_orden:
-    #         print(f"\nEstado de la orden {numeroEnvio}: {estado_orden}")
+    #         print(f"
+Estado de la orden {numeroEnvio}: {estado_orden}")
       
     #   # 5. Obtener Etiquetas
     #   if numeroAgrupador:
@@ -115,12 +118,14 @@ if __name__ == '__main__':
     #       if etiqueta:
     #           with open("etiqueta_andreani.pdf", "wb") as etiqueta_file:
     #             etiqueta_file.write(etiqueta)
-    #             print("\nEtiqueta guardada como 'etiqueta_andreani.pdf'")
+    #             print("
+Etiqueta guardada como 'etiqueta_andreani.pdf'")
     
     #       # 6. Consultar Estado de Envío
     #       estado_envio = api.consultar_estado_envio(numeroEnvio)
     #       if estado_envio:
-    #           print("\nEstado del envío:", estado_envio)
+    #           print("
+Estado del envío:", estado_envio)
     
     # # 7. Obtener Envios por contrato
     # params = {
@@ -128,29 +133,34 @@ if __name__ == '__main__':
     # }
     # envios_contrato = api.obtener_envios(params)
     # if envios_contrato:
-    #     print("\nEnvios por contrato:", envios_contrato)
+    #     print("
+Envios por contrato:", envios_contrato)
     
     # # 8. Obtener info multimedia del envio
     # if numeroEnvio:
     #     multimedia_envio = api.obtener_multimedia_envio(numeroEnvio)
     #     if multimedia_envio:
-    #         print("\nInfo multimedia del envio:", multimedia_envio)
+    #         print("
+Info multimedia del envio:", multimedia_envio)
         
     #     # 9. Obtener remito digitalizado del envio
     #     remito_digitalizado = api.obtener_remito_digitalizado(numeroEnvio)
     #     if remito_digitalizado:
-    #       print("\nRemito digitalizado del envio:", remito_digitalizado)
+    #       print("
+Remito digitalizado del envio:", remito_digitalizado)
     
     #     # 10. Obtener trazas del envio
     #     trazas_envio = api.obtener_trazas_envio(numeroEnvio)
     #     if trazas_envio:
-    #         print("\nTrazas del envio:", trazas_envio)
+    #         print("
+Trazas del envio:", trazas_envio)
 
      # 11. Obtener Localidades por código postal
     codigo_postal_buscado = "1644"  # Reemplaza con el código postal que deseas buscar
     localidades = api.obtener_localidades_por_codigo_postal(codigo_postal_buscado)
 
     if localidades:
-        print(f"\nLocalidades encontradas para el código postal {codigo_postal_buscado}:")
+        print(f"
+Localidades encontradas para el código postal {codigo_postal_buscado}:")
         for localidad in localidades:
           print(f"Localidad: {localidad['localidad']}")

@@ -1,36 +1,50 @@
-from conexion import Conexion
-from credenciales import LOCALES_LAKERS
-import Apis
-from consultas import qry_ventasEnc,qry_ventasDetalle
+import logging
+from GestionAPI.common.logger_config import setup_logger
+from GestionAPI.common.db_operations import DatabaseConnection
+from GestionAPI.Solar.api_client import SolarApiClient
+from GestionAPI.common.credenciales import LOCALES_LAKERS, API_SOLAR
+from GestionAPI.Solar.consultas import qry_ventasEnc, qry_ventasDetalle
 
-# Crear una instancia de la clase Conexion
-conexion = Conexion(server=LOCALES_LAKERS['server'], database=LOCALES_LAKERS['database'], user=LOCALES_LAKERS['user'], password=LOCALES_LAKERS['password'])
+def main():
+    # Configurar el logger
+    logger = setup_logger()
+    
+    try:
+        # Inicializar conexión a la base de datos
+        db = DatabaseConnection(
+            server=LOCALES_LAKERS['server'],
+            database=LOCALES_LAKERS['database'],
+            user=LOCALES_LAKERS['user'],
+            password=LOCALES_LAKERS['password']
+        )
 
-"""     Ventas Encabezados """
-# Obtener ventas pendientes de sincronizar (Solo encabezados)
-ventasEnc = conexion.ejecutar_consulta(qry_ventasEnc)
+        # Obtener ventas pendientes
+        ventas_enc = db.ejecutar_consulta(qry_ventasEnc)
+        if not ventas_enc:
+            logger.info("No hay ventas pendientes de sincronizar")
+            return
 
-if not ventasEnc:
-    print("No hay ventas pendientes de sincronizar")
-    exit()
-else:
-    print("Hay {} ventas pendientes de sincronizar".format(len(ventasEnc)))
+        logger.info(f"Se encontraron {len(ventas_enc)} ventas pendientes de sincronizar")
 
-    # obtener token
-    token = Apis.obtenerToken_Solar()
-    resultadoSync = False
-    if token:
-        # Convertir los resultados en una lista de diccionarios
-        columnas_ventasEnc = conexion.obtener_nombres_columnas(qry_ventasEnc)
-        resultados_ventasEnc = [dict(zip(columnas_ventasEnc, fila)) for fila in ventasEnc]
+        # Inicializar cliente API
+        api_client = SolarApiClient()
+        token = api_client.obtener_token(API_SOLAR)
+        
+        if not token:
+            logger.error("No se pudo obtener el token de acceso")
+            return
+
+# Convertir los resultados en una lista de diccionarios
+        columnas_ventasEnc = db.obtener_nombres_columnas(qry_ventasEnc)
+        resultados_ventasEnc = [dict(zip(columnas_ventasEnc, fila)) for fila in ventas_enc]
         # print(resultados_ventasEnc)
 
 
         """     Ventas Detalle """
         # Ejecutar la consulta y obtener los resultados
-        lista_ventasDetalle = conexion.ejecutar_consulta(qry_ventasDetalle)
+        lista_ventasDetalle = db.ejecutar_consulta(qry_ventasDetalle)
         # Obtener los nombres de las columnas para la consulta ventasDetalle
-        columnas_ventasDetalle = conexion.obtener_nombres_columnas(qry_ventasDetalle)
+        columnas_ventasDetalle = db.obtener_nombres_columnas(qry_ventasDetalle)
         dict_VentasDetalle = [dict(zip(columnas_ventasDetalle, fila)) for fila in lista_ventasDetalle]
         
         # Armar estructura de detalle
@@ -93,6 +107,7 @@ else:
             comprobante.append(registro)
             listComp.append(EncVentas['NroComprobante'])
 
+        # print(listComp)
         # Agregar cada nuevo comprobante a la lista existente en "Comprobantes"
         data[0]["Comprobantes"].extend(comprobante)
 
@@ -100,26 +115,25 @@ else:
         comprobantes_str = "('" + "', '".join(listComp) + "')"
 
         # Imprimir el string de comprobantes
-        print(comprobantes_str)
-
-
-        # informar ventas
-        resultadoSync = Apis.informarVentas_Solar(token, data[0])
-        if resultadoSync:
-            print("Información de ventas sincronizada con Solar")
-            # Actualizar estado en el historial
-            actEstado = conexion.actEstadoSync(comprobantes_str)
-            if actEstado:
-                print("Estado actualizado en la base de datos")
+        # print(comprobantes_str)
+        
+        # Informar ventas
+        if api_client.informar_ventas(token, data[0]):
+            # comprobantes_str = "('" + "', '".join(data['comprobantes']) + "')"
+            if db.actualizar_estado_sync(comprobantes_str):
+                logger.info("Proceso de sincronización completado exitosamente")
             else:
-                print("Error al actualizar estado en la base de datos")
+                logger.error("Error al actualizar estado de sincronización")
         else:
-            print("Error al informar ventas con Solar")
+            logger.error("Error al informar ventas")
 
-    else:
-        print("Error al obtener token para sincronizar información de ventas con Solar")
-        exit()
-    
+    except Exception as e:
+        logger.error(f"Error en el proceso de sincronización: {str(e)}", exc_info=True)
 
+def procesar_datos_ventas(ventas_enc, ventas_detalle):
+    # Procesar y estructurar los datos de ventas
+    # [Implementación del procesamiento de datos...]
+    pass
 
-    
+if __name__ == "__main__":
+    main()
