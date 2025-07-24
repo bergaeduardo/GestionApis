@@ -5,6 +5,13 @@ LOCALES_LAKERS = {
     'password': 'falsa_password'
 }
 
+CENTRAL_LAKERS = {
+    'server': 'falso_server',
+    'database': 'falsa_database',
+    'user': 'falso_user',
+    'password': 'falsa_password'
+}
+
 API_SOLAR = {
     'usuario': 'falso_usuario_solar',
     'clave': 'falsa_clave_solar'
