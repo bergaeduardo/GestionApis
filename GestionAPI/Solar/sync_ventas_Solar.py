@@ -1,3 +1,10 @@
+import sys
+import os
+
+# Obtiene la ruta del directorio padre (la raíz del proyecto)
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+# Añade la ruta de la raíz del proyecto a sys.path
+sys.path.insert(0, project_root)
 import logging
 from GestionAPI.common.logger_config import setup_logger
 from GestionAPI.common.db_operations import DatabaseConnection
