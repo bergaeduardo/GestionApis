@@ -3,14 +3,14 @@
 
 import requests
 import logging
-from GestionAPI.common.credenciales import obtener_credenciales
+from GestionAPI.common.credenciales import JAUSER
 
 logger = logging.getLogger(__name__)
 
 class JauserAPI:
     def __init__(self):
         self.base_url = "https://api-jys.jauser.global/api/"
-        self.credentials = obtener_credenciales('jauser') # Asegúrate de tener una sección 'jauser' en tu archivo de credenciales
+        self.credentials = JAUSER # Asegúrate de tener una sección 'jauser' en tu archivo de credenciales
         if not self.credentials:
             logger.error("No se encontraron credenciales para Jauser.")
             raise ValueError("Credenciales de Jauser no encontradas.")

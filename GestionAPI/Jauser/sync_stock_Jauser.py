@@ -51,13 +51,23 @@ def main():
         all_stock_items = stock_nacional + stock_fiscal # O manejar por separado según necesites
         logger.info(f"Total de items de stock a procesar: {len(all_stock_items)}.")
 
-        # 4. Eliminar datos existentes en la tabla
-        db.clear_stock_table()
-        logger.info("Datos de stock existentes eliminados de la tabla.")
+        # 4. Eliminar datos existentes en la tabla y insertar los nuevos
+        if stock_nacional or stock_fiscal:
+            db.clear_stock_table()
+            logger.info("Datos de stock existentes eliminados de la tabla.")
+            if stock_nacional:
+                db.insert_stock_data(stock_nacional, "82")
+                logger.info("Datos de stock nacional insertados en la tabla.")
+            if stock_fiscal:
+                db.insert_stock_data(stock_fiscal, "83")
+                logger.info("Datos de stock fiscal insertados en la tabla.")
+        else:
+            logger.warning("No se obtuvieron datos de stock, via api.")
+            return
 
-        # 5. Almacenar los nuevos datos
-        db.insert_stock_data(all_stock_items)
-        logger.info("Nuevos datos de stock insertados en la tabla.")
+        # # 5. Almacenar los nuevos datos
+        # db.insert_stock_data(all_stock_items)
+        # logger.info("Nuevos datos de stock insertados en la tabla.")
 
         logger.info("Sincronización de stock de Jauser finalizada exitosamente.")
 

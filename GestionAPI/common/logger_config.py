@@ -2,13 +2,13 @@ import logging
 import os
 from datetime import datetime
 
-def setup_logger():
+def setup_logger(name):
     # Crear el directorio logs si no existe
     if not os.path.exists('logs'):
         os.makedirs('logs')
         
     # Configurar el logger principal
-    logger = logging.getLogger('solar_sync')
+    logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
     
     # Crear el formato para los logs
