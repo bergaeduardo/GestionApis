@@ -14,7 +14,7 @@ from GestionAPI.Solar.consultas import qry_ventasEnc, qry_ventasDetalle
 
 def main():
     # Configurar el logger
-    logger = setup_logger()
+    logger = setup_logger('solar_sync')
     
     try:
         # Inicializar conexión a la base de datos
