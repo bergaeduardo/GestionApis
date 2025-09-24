@@ -1,6 +1,6 @@
-import requests
+import asyncio
+import aiohttp
 from requests.auth import HTTPBasicAuth
-# from credenciales import DATA_QA # Lo importamos donde lo usamos
 
 
 class AndreaniAPI:
@@ -8,128 +8,132 @@ class AndreaniAPI:
         self.base_url = base_url
         self.user = user
         self.password = password
-        self.token = self._get_auth_token()
+        self.token = None
+        self._auth_lock = asyncio.Lock() # Agregamos un Lock
 
-        if not self.token:
-            raise ValueError("No se pudo obtener el token de autorización.")
-    
-    def _get_auth_token(self):
-        """Obtiene el token de autenticación."""
+    async def _ensure_token(self):
+        """Asegura que el token esté disponible antes de continuar."""
+        async with self._auth_lock:
+            if not self.token:
+                await self._get_auth_token()
+
+    async def _get_auth_token(self):
+        """Obtiene el token de autenticación de forma asíncrona."""
         login_url = f"{self.base_url}/login"
-        response = requests.get(login_url, auth=HTTPBasicAuth(self.user, self.password))
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                login_url, auth=aiohttp.BasicAuth(self.user, self.password)
+            ) as response:
+                if response.status == 200:
+                    self.token = response.headers.get("x-authorization-token")
+                    return self.token
+                else:
+                    text = await response.text()
+                    print(f"Error {response.status}: {text}")
+                    return None
 
-        if response.status_code == 200:
-            return response.headers.get('x-authorization-token')
-        else:
-            print(f"Error {response.status_code}: {response.text}")
-            return None
-    
-    def _make_request(self, method, url, headers=None, params=None, json=None):
-        """Realiza una solicitud a la API y maneja los errores."""
+    async def _make_request(self, method, url, headers=None, params=None, json_data=None):
+        """Realiza una solicitud a la API de forma asíncrona y maneja los errores."""
+        await self._ensure_token()  # Aseguramos que el token esté disponible
         headers = headers or {}
         if self.token:
-             headers['x-authorization-token'] = self.token
+            headers["x-authorization-token"] = self.token
         
+        if method == "POST" and json_data is not None:
+            headers["Content-Type"] = "application/json"
+
         try:
-            response = requests.request(method, url, headers=headers, params=params, json=json)
-            response.raise_for_status()  # Lanza una excepción para errores HTTP
-            
-            if response.status_code == 204:
-                return None  # No hay contenido en la respuesta
-            
-            try:
-                return response.json()
-            except requests.exceptions.JSONDecodeError:
-                return response.content
-        except requests.exceptions.RequestException as e:
-            print(f"Error en la solicitud: {e}")
-            if response:
-                print(f"Detalles: {response.status_code} - {response.text}")
-            return None
-        
-    def buscar_sucursales(self, parametros):
-        """Busca sucursales según los parámetros proporcionados."""
+           async with aiohttp.ClientSession() as session:
+                async with session.request(
+                    method, url, headers=headers, params=params, json=json_data
+                ) as response:
+                  response.raise_for_status()
+                  if response.status == 204:
+                      return None
+                  
+                  content_type = response.headers.get("Content-Type", "")
+                  if "application/json" in content_type:
+                      return await response.json()
+                  else:
+                    return await response.read()
+        except aiohttp.ClientError as e:
+          print(f"Error en la solicitud: {e}")
+          # Capturar el mensaje de error y retornar None
+          return None
+        except Exception as e:
+          print(f"Error no manejado: {e}")
+          return None
+
+
+    async def buscar_sucursales(self, parametros):
+        """Busca sucursales según los parámetros proporcionados de forma asíncrona."""
         url = f"{self.base_url}/v2/sucursales"
-        return self._make_request("GET", url, params=parametros)
-    
-    def obtener_cotizacion(self, parametros):
-        """Obtiene la cotización de envío."""
+        return await self._make_request("GET", url, params=parametros)
+
+    async def obtener_cotizacion(self, parametros):
+        """Obtiene la cotización de envío de forma asíncrona."""
         url = f"{self.base_url}/v1/tarifas"
-        return self._make_request("GET", url, params=parametros)
-    
-    def crear_orden_envio(self, data):
-        """Crea una orden de envío."""
-        url = f'{self.base_url}/v2/ordenes-de-envio'
-        
-        response = self._make_request("POST", url, json=data)
-        
+        return await self._make_request("GET", url, params=parametros)
+
+    async def crear_orden_envio(self, data):
+        """Crea una orden de envío de forma asíncrona."""
+        url = f"{self.base_url}/v2/ordenes-de-envio"
+
+        response = await self._make_request("POST", url, json_data=data)
+
         if response:
             resultado = {}
-            
-            if response.get('bultos') and response['bultos'][0].get("numeroDeEnvio"):
-              resultado["numeroEnvio"] = response["bultos"][0]["numeroDeEnvio"]
-            if response.get('agrupadorDeBultos'):
-              resultado["numeroAgrupador"] = response["agrupadorDeBultos"]
-            
-            if response.get("sucursalDeDistribucion"):
-                sucursalDistribucion = response["sucursalDeDistribucion"].get("descripcion", "N/A")
-            else:
-                sucursalDistribucion = 'N/A'
-            
-            etiquetas = response.get('bultos')[0].get("linking") if response.get('bultos') and response['bultos'][0].get("linking") else 'N/A'
-
-            print("Orden de envío creada con éxito.")
-            print("Número de envío:", resultado.get("numeroEnvio", "N/A"))
-            print("Número de agrupador de bultos:", resultado.get("numeroAgrupador", "N/A"))
-            print("Sucursal de distribución:", sucursalDistribucion)
-           
+            if response.get("bultos") and response["bultos"][0].get("numeroDeEnvio"):
+                resultado["numeroEnvio"] = response["bultos"][0]["numeroDeEnvio"]
+            if response.get("agrupadorDeBultos"):
+                resultado["numeroAgrupador"] = response["agrupadorDeBultos"]
             return resultado
-    
-    def consultar_estado_orden(self, numeroEnvio):
-        """Consulta el estado de una orden de envío."""
+
+    async def consultar_estado_orden(self, numeroEnvio):
+        """Consulta el estado de una orden de envío de forma asíncrona."""
         url = f"{self.base_url}/v2/ordenes-de-envio/{numeroEnvio}"
-        response = self._make_request("GET", url)
-        
+        response = await self._make_request("GET", url)
+
         if response:
-          estado = response.get("estado")
-          return estado
+            estado = response.get("estado")
+            return estado
         else:
             return None
-    
-    def obtener_etiquetas(self, numeroAgrupador):
-        """Obtiene las etiquetas de envío."""
-        url = f"{self.base_url}/v2/ordenes-de-envio/{numeroAgrupador}/etiquetas"
-        return self._make_request("GET", url)
-    
-    def consultar_estado_envio(self, numeroEnvio):
-        """Consulta el estado de un envío."""
-        url = f'{self.base_url}/v2/envios/{numeroEnvio}'
-        return self._make_request("GET", url)
 
-    def obtener_envios(self, params):
-        """Obtiene envíos según los parámetros."""
-        url = f'{self.base_url}/v2/envios'
-        return self._make_request("GET", url, params=params)
-    
-    def obtener_multimedia_envio(self, numeroEnvio):
-        """Obtiene información multimedia del envío"""
-        url = f'{self.base_url}/v1/envios/{numeroEnvio}/multimedia'
-        return self._make_request("GET", url)
-    
-    def obtener_remito_digitalizado(self, numeroEnvio):
-        """Obtiene el remito digitalizado del envío"""
-        url = f'{self.base_url}/v1/envios/{numeroEnvio}/remito'
-        return self._make_request("GET", url)
-        
-    def obtener_trazas_envio(self, numeroEnvio):
-        """Obtiene las trazas del envío"""
-        url = f'{self.base_url}/v2/envios/{numeroEnvio}/trazas'
-        return self._make_request("GET", url)
-    
-    def obtener_localidades_por_codigo_postal(self, codigo_postal):
-        """Obtiene localidades filtradas por código postal."""
+    async def obtener_etiquetas(self, numeroAgrupador):
+        """Obtiene las etiquetas de envío de forma asíncrona."""
+        url = f"{self.base_url}/v2/ordenes-de-envio/{numeroAgrupador}/etiquetas"
+        return await self._make_request("GET", url)
+
+    async def consultar_estado_envio(self, numeroEnvio):
+        """Consulta el estado de un envío de forma asíncrona."""
+        url = f"{self.base_url}/v2/envios/{numeroEnvio}"
+        return await self._make_request("GET", url)
+
+    async def obtener_envios(self, params):
+        """Obtiene envíos según los parámetros de forma asíncrona."""
+        url = f"{self.base_url}/v2/envios"
+        return await self._make_request("GET", url, params=params)
+
+    async def obtener_multimedia_envio(self, numeroEnvio):
+        """Obtiene información multimedia del envío de forma asíncrona."""
+        url = f"{self.base_url}/v1/envios/{numeroEnvio}/multimedia"
+        return await self._make_request("GET", url)
+
+    async def obtener_remito_digitalizado(self, numeroEnvio):
+        """Obtiene el remito digitalizado del envío de forma asíncrona."""
+        url = f"{self.base_url}/v1/envios/{numeroEnvio}/remito"
+        return await self._make_request("GET", url)
+
+    async def obtener_trazas_envio(self, numeroEnvio):
+        """Obtiene las trazas del envío de forma asíncrona."""
+        url = f"{self.base_url}/v2/envios/{numeroEnvio}/trazas"
+        return await self._make_request("GET", url)
+
+    async def obtener_localidades_por_codigo_postal(self, codigo_postal):
+        """Obtiene localidades filtradas por código postal de forma asíncrona."""
         url = f"{self.base_url}/v1/localidades"
-        response = self._make_request("GET", url)
+        response = await self._make_request("GET", url)
 
         if response:
             localidades_filtradas = [
@@ -139,4 +143,4 @@ class AndreaniAPI:
             ]
             return localidades_filtradas
         else:
-             return []
+            return []

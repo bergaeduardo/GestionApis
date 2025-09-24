@@ -1,0 +1,472 @@
+"""
+Módulo para gestionar impresoras en Windows.
+Este módulo proporciona una interfaz para manejar la configuración de impresoras,
+especialmente útil para la impresión de etiquetas y rotulación.
+"""
+
+import win32print
+import win32api
+import win32ui
+import logging
+import subprocess
+import os
+import json
+from abc import ABC, abstractmethod
+from enum import Enum
+from typing import Optional, Union
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+class PrintMethod(Enum):
+    """Enumeration of available printing methods"""
+    WIN32 = "win32"
+    ADOBE = "adobe"
+    GHOST = "ghost"
+
+class PrinterError(Exception):
+    """Custom exception for printer-related errors"""
+    pass
+
+class BasePrinter(ABC):
+    """Abstract base class for printer implementations"""
+    
+    @abstractmethod
+    def print_file(self, file_path: Union[str, Path], copies: int = 1) -> bool:
+        """Print a file using the specific implementation"""
+        pass
+
+class Win32Printer(BasePrinter):
+    """Implementation of printing using win32api"""
+    
+    def print_file(self, file_path: Union[str, Path], copies: int = 1) -> bool:
+        try:
+            file_path = str(Path(file_path).resolve())
+            
+            # Inicializar objeto de impresión
+            win32api.ShellExecute(
+                0,                  # Handle parent (0 = desktop)
+                "printto",          # Operación
+                file_path,          # Archivo a imprimir
+                '"%s"' % win32print.GetDefaultPrinter(),  # Impresora
+                ".",                # Directorio de trabajo
+                0                   # Mostrar la ventana (0 = oculta)
+            )
+            
+            logger.info(f"Archivo {file_path} enviado a imprimir usando Win32API")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error al imprimir usando Win32API: {e}")
+            return False
+
+class GhostPrinter(BasePrinter):
+    """Implementation of printing using GhostScript"""
+    
+    def __init__(self):
+        self._gsprint_path = self._find_gsprint()
+    
+    def _find_gsprint(self) -> str:
+        """Find GSPrint installation"""
+        common_paths = [
+            r"C:\Program Files\gs\gs*\bin\gswin64c.exe",
+            r"C:\Program Files (x86)\gs\gs*\bin\gswin32c.exe"
+        ]
+        
+        # Buscar gsprint en las rutas comunes
+        import glob
+        for path_pattern in common_paths:
+            matches = glob.glob(path_pattern)
+            if matches:
+                # Tomar la versión más reciente
+                return sorted(matches)[-1]
+                
+        raise PrinterError(
+            "GhostScript no encontrado. Por favor instálalo desde:\n"
+            "https://www.ghostscript.com/releases/gsdnld.html"
+        )
+    
+    def print_file(self, file_path: Union[str, Path], copies: int = 1) -> bool:
+        try:
+            file_path = str(Path(file_path).resolve())
+            printer_name = win32print.GetDefaultPrinter()
+            
+            command = [
+                self._gsprint_path,
+                "-dNOPAUSE",
+                "-dBATCH",
+                "-dNOPROMPT",
+                f"-sDEVICE=mswinpr2",
+                f"-sOutputFile=%printer%{printer_name}",
+                file_path
+            ]
+            
+            logger.debug(f"Imprimiendo con GhostScript: {' '.join(command)}")
+            
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"Archivo {file_path} enviado a imprimir usando GhostScript")
+                return True
+            else:
+                logger.error(f"Error al imprimir usando GhostScript: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error al imprimir usando GhostScript: {e}")
+            return False
+
+class AdobePrinter(BasePrinter):
+    """Implementation of printing using Adobe Reader"""
+    
+    def __init__(self):
+        self._adobe_path = self._find_adobe_reader()
+    
+    def _find_adobe_reader(self) -> str:
+        """Find Adobe Reader installation path"""
+        # 1. Primero buscar en la variable de entorno
+        adobe_path = os.environ.get('ADOBE_READER_PATH')
+        if adobe_path and os.path.exists(adobe_path):
+            return adobe_path
+
+        # 2. Buscar en configuración si existe
+        config_path = os.path.join(os.path.dirname(__file__), 'config', 'printer_config.json')
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    adobe_path = config.get('printer', {}).get('adobe_reader_path')
+                    if adobe_path and os.path.exists(adobe_path):
+                        return adobe_path
+            except Exception as e:
+                logger.warning(f"Error al leer configuración de Adobe Reader: {e}")
+
+        # 3. Buscar en rutas comunes
+        common_paths = [
+            r"C:\Program Files (x86)\Adobe\Acrobat Reader DC\Reader\AcroRd32.exe",
+            r"C:\Program Files\Adobe\Acrobat Reader DC\Reader\AcroRd32.exe",
+            r"C:\Program Files\Adobe\Acrobat Reader\Reader\AcroRd32.exe",
+            r"C:\Program Files (x86)\Adobe\Acrobat Reader\Reader\AcroRd32.exe",
+            # Buscar en todas las versiones posibles de Adobe Reader
+            *[f"C:\\Program Files (x86)\\Adobe\\Reader\\{v}\\Reader\\AcroRd32.exe" for v in range(8, 13)],
+            *[f"C:\\Program Files\\Adobe\\Reader\\{v}\\Reader\\AcroRd32.exe" for v in range(8, 13)]
+        ]
+        
+        # 4. Buscar en el registro de Windows si las rutas anteriores fallan
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\AcroRd32.exe") as key:
+                path = winreg.QueryValue(key, None)
+                if path and os.path.exists(path):
+                    return path
+        except Exception:
+            pass
+
+        # 5. Buscar en las rutas comunes
+        for path in common_paths:
+            if os.path.exists(path):
+                return path
+        
+        raise PrinterError(
+            "Adobe Reader no encontrado. Por favor, especifica la ruta correcta usando:\n"
+            "1. Variable de entorno ADOBE_READER_PATH\n"
+            "2. Archivo de configuración config/printer_config.json\n"
+            "3. O asegúrate de que Adobe Reader esté instalado en una de las rutas estándar"
+        )
+    
+    def print_file(self, file_path: Union[str, Path], copies: int = 1) -> bool:
+        try:
+            # Verificaciones previas
+            file_path = str(Path(file_path).resolve())
+            if not os.path.exists(file_path):
+                logger.error(f"El archivo no existe: {file_path}")
+                return False
+                
+            # Verificar que la impresora predeterminada esté configurada
+            current_printer = win32print.GetDefaultPrinter()
+            if not current_printer:
+                logger.error("No hay impresora predeterminada configurada")
+                return False
+                
+            logger.debug(f"Impresora actual: {current_printer}")
+            
+            # Pausa de 2 segundos antes de imprimir
+            import time
+            time.sleep(2)
+
+            # Parámetros optimizados para impresión silenciosa
+            command = [
+                self._adobe_path,
+                "/s",    # Modo silencioso
+                "/h",    # Ocultar la aplicación
+                "/t",    # Imprimir a una impresora específica
+                file_path,
+                current_printer # Imprimir a la impresora especificada
+            ]
+            
+            logger.debug(f"Imprimiendo con Adobe Reader: {' '.join(command)}")
+            
+            # Ejecutar Adobe Reader de forma silenciosa en segundo plano
+            subprocess.Popen(
+                command,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            
+            logger.info(f"Archivo {file_path} enviado a imprimir usando Adobe Reader (proceso en segundo plano).")
+            logger.warning("Los errores de impresión de Adobe Reader no se capturarán directamente en este modo.")
+            return True
+                
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error al ejecutar Adobe Reader: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Error inesperado al imprimir usando Adobe Reader: {e}")
+            return False
+
+class PrinterManager:
+    """
+    Clase para gestionar la configuración de impresoras en Windows.
+    
+    Esta clase proporciona métodos para cambiar entre impresoras,
+    guardar y restaurar la configuración de impresora predeterminada,
+    y obtener información sobre las impresoras del sistema.
+    """
+    
+    def __init__(self, label_printer_path: Optional[str] = None, 
+                 print_method: Union[str, PrintMethod] = PrintMethod.ADOBE):
+        """
+        Inicializa el gestor de impresoras.
+        
+        Args:
+            label_printer_path (str, optional): Ruta de la impresora de etiquetas.
+                Por ejemplo: "\\\\192.168.0.64\\ZDesigner GC420t (EPL)"
+                Si no se proporciona, se debe establecer más tarde con set_label_printer.
+            print_method (Union[str, PrintMethod], optional): Método de impresión a utilizar.
+                Puede ser "win32" o "adobe". Por defecto "adobe".
+        """
+        self._label_printer = label_printer_path
+        self._original_printer = None
+        
+        # Configurar el método de impresión
+        if isinstance(print_method, str):
+            try:
+                self._print_method = PrintMethod(print_method.lower())
+            except ValueError:
+                logger.warning(f"Método de impresión '{print_method}' no válido. Usando Adobe Reader.")
+                self._print_method = PrintMethod.ADOBE
+        else:
+            self._print_method = print_method
+            
+        # Inicializar el printer específico
+        try:
+            if self._print_method == PrintMethod.WIN32:
+                self._printer = Win32Printer()
+            elif self._print_method == PrintMethod.GHOST:
+                self._printer = GhostPrinter()
+            else: # Incluye ADOBE y cualquier otro caso
+                self._printer = AdobePrinter()
+        except PrinterError as e:
+            logger.error(f"Error al inicializar el método de impresión {self._print_method.value}: {e}")
+            logger.info("Cambiando al método alternativo de impresión")
+            
+            # Intentar método alternativo
+            self._print_method = (PrintMethod.ADOBE if self._print_method == PrintMethod.WIN32 
+                                else PrintMethod.WIN32)
+            try:
+                self._printer = (AdobePrinter() if self._print_method == PrintMethod.ADOBE 
+                               else Win32Printer())
+            except PrinterError as e:
+                logger.error(f"Error al inicializar el método alternativo: {e}")
+                raise
+    
+    @property
+    def current_printer(self) -> str:
+        """
+        Obtiene el nombre de la impresora actualmente establecida como predeterminada.
+        
+        Returns:
+            str: Nombre de la impresora predeterminada actual.
+        """
+        return win32print.GetDefaultPrinter()
+    
+    @property
+    def label_printer(self) -> Optional[str]:
+        """
+        Obtiene la ruta de la impresora de etiquetas configurada.
+        
+        Returns:
+            Optional[str]: Ruta de la impresora de etiquetas o None si no está configurada.
+        """
+        return self._label_printer
+    
+    def set_label_printer(self, printer_path: str) -> None:
+        """
+        Establece la ruta de la impresora de etiquetas.
+        
+        Args:
+            printer_path (str): Ruta completa de la impresora de etiquetas.
+                Ejemplo: "\\\\192.168.0.64\\ZDesigner GC420t (EPL)"
+        """
+        self._label_printer = printer_path
+        logger.info(f"Impresora de etiquetas configurada: {printer_path}")
+    
+    def switch_to_label_printer(self) -> bool:
+        """
+        Cambia la impresora predeterminada a la impresora de etiquetas.
+        
+        Returns:
+            bool: True si el cambio fue exitoso, False en caso contrario.
+        
+        Raises:
+            ValueError: Si no se ha configurado una impresora de etiquetas.
+        """
+        if not self._label_printer:
+            raise ValueError("No se ha configurado una impresora de etiquetas")
+        
+        try:
+            # Verificar si la impresora existe en el sistema
+            printers = self.list_printers()
+            printer_names = [p['name'] for p in printers]
+            logger.debug(f"Impresoras disponibles: {printer_names}")
+            
+            if self._label_printer not in printer_names:
+                logger.error(f"La impresora {self._label_printer} no está instalada en el sistema")
+                logger.info("Impresoras disponibles:")
+                for printer in printers:
+                    logger.info(f"- {printer['name']} ({printer['port']})")
+                return False
+                
+            # Verificar si podemos abrir la impresora
+            try:
+                hprinter = win32print.OpenPrinter(self._label_printer)
+                win32print.ClosePrinter(hprinter)
+            except Exception as e:
+                logger.exception(f"No se puede acceder a la impresora: {self._label_printer}")
+                return False
+            
+            # Guardar la impresora actual
+            try:
+                self._original_printer = win32print.GetDefaultPrinter()
+                logger.debug(f"Impresora original: {self._original_printer}")
+            except Exception as e:
+                logger.warning(f"No se pudo obtener la impresora predeterminada actual: {e}")
+                self._original_printer = None
+            
+            # Intentar cambiar la impresora
+            try:
+                win32print.SetDefaultPrinter(self._label_printer)
+                current = win32print.GetDefaultPrinter()
+                if current == self._label_printer:
+                    logger.info(f"Cambiado exitosamente a impresora de etiquetas: {self._label_printer}")
+                    return True
+                else:
+                    logger.error(f"La impresora no se cambió correctamente. Se intentó establecer: {self._label_printer}, pero la actual es: {current}")
+                    return False
+            except Exception as e:
+                logger.exception(f"Error al establecer la impresora predeterminada: {self._label_printer}. Verifica que tienes permisos de administrador o los permisos necesarios para cambiar la impresora")
+                return False
+                
+        except Exception as e:
+            logger.exception(f"Error inesperado al cambiar la impresora a: {self._label_printer}")
+            return False
+    
+    def restore_default_printer(self) -> bool:
+        """
+        Restaura la impresora predeterminada original.
+        
+        Returns:
+            bool: True si la restauración fue exitosa, False en caso contrario.
+        """
+        if not self._original_printer:
+            logger.warning("No hay impresora original para restaurar")
+            return False
+        
+        try:
+            win32print.SetDefaultPrinter(self._original_printer)
+            logger.info(f"Restaurada impresora predeterminada: {self._original_printer}")
+            self._original_printer = None
+            return True
+        except Exception as e:
+            logger.error(f"Error al restaurar impresora predeterminada: {e}")
+            return False
+    
+    def print_file(self, file_path: Union[str, Path], copies: int = 1) -> bool:
+        """
+        Imprime un archivo usando el método de impresión configurado.
+        
+        Args:
+            file_path (Union[str, Path]): Ruta al archivo a imprimir
+            copies (int, optional): Número de copias a imprimir. Por defecto 1.
+            
+        Returns:
+            bool: True si la impresión fue exitosa, False en caso contrario.
+        """
+        return self._printer.print_file(file_path, copies)
+    
+    @staticmethod
+    def list_printers() -> list:
+        """
+        Obtiene una lista de todas las impresoras instaladas en el sistema.
+        
+        Returns:
+            list: Lista de diccionarios con información de las impresoras.
+                Cada diccionario contiene:
+                - name: Nombre de la impresora
+                - port: Puerto de la impresora
+                - description: Descripción de la impresora
+        """
+        printer_info = []
+        
+        try:
+            for printer in win32print.EnumPrinters(win32print.PRINTER_ENUM_LOCAL | 
+                                                 win32print.PRINTER_ENUM_CONNECTIONS):
+                info = {
+                    'name': printer[2] if len(printer) > 2 else 'Desconocido',
+                    'port': printer[1] if len(printer) > 1 else 'Desconocido',
+                    'description': printer[4] if len(printer) > 4 else 'Sin descripción'
+                }
+                printer_info.append(info)
+                logger.debug(f"Impresora encontrada: {info}")
+            return printer_info
+        except Exception as e:
+            logger.error(f"Error al listar impresoras: {e}")
+            return []
+
+# Para mantener compatibilidad con el código existente
+def rotuladora():
+    """
+    Función heredada para mantener compatibilidad con código existente.
+    Cambia a la impresora de etiquetas y retorna la impresora original.
+    
+    Returns:
+        str: Nombre de la impresora original
+    """
+    printer_manager = PrinterManager("\\pc-pedidos-02\ZDesigner GC420t (EPL)")
+    printer_manager.switch_to_label_printer()
+    return printer_manager.current_printer
+
+def predet(currentprinter):
+    """
+    Función heredada para mantener compatibilidad con código existente.
+    Restaura la impresora predeterminada.
+    
+    Args:
+        currentprinter (str): Nombre de la impresora a restaurar
+    """
+    win32print.SetDefaultPrinter(currentprinter)
+
+def mensaje():
+    """
+    Función heredada para mantener compatibilidad con código existente.
+    Retorna un mensaje con la impresora actual.
+    
+    Returns:
+        str: Mensaje con el nombre de la impresora actual
+    """
+    return 'Impresora: ' + win32print.GetDefaultPrinter()
+ 

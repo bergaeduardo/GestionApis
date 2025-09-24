@@ -9,7 +9,7 @@ def setup_logger(name):
         
     # Configurar el logger principal
     logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
     
     # Crear el formato para los logs
     formatter = logging.Formatter(
@@ -20,12 +20,12 @@ def setup_logger(name):
     # Handler para archivo
     file_handler = logging.FileHandler('logs/app.log')
     file_handler.setFormatter(formatter)
-    file_handler.setLevel(logging.INFO)
+    file_handler.setLevel(logging.DEBUG)
     
     # Handler para consola
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.DEBUG)
     
     # Agregar handlers al logger
     logger.addHandler(file_handler)

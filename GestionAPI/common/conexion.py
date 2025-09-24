@@ -1,4 +1,7 @@
 import pyodbc
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Conexion:
     def __init__(self, server, database, user, password):
@@ -14,10 +17,9 @@ class Conexion:
                 f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={self.server};DATABASE={self.database};UID={self.user};PWD={self.password}'
             )
             if self.connection:
-                # print("Conexión exitosa a la base de datos")
                 return self.connection.cursor()
         except pyodbc.Error as e:
-            print(f"Error al conectar a la base de datos: {e}")
+            logger.error(f"Error al conectar a la base de datos: {e}")
             return None
 
     def ejecutar_consulta(self, sql):
@@ -27,10 +29,23 @@ class Conexion:
                 cursor.execute(sql)
                 resultados = cursor.fetchall()
                 self.connection.commit()
-                # print("Consulta ejecutada con éxito")
                 return resultados
             except pyodbc.Error as e:
-                print(f"Error al ejecutar la consulta: {e}")
+                logger.error(f"Error al ejecutar la consulta: {e}")
+            finally:
+                cursor.close()
+                self.connection.close()
+
+    def ejecutar_update(self, sql, params=None):
+        cursor = self.conectar()
+        if cursor:
+            try:
+                cursor.execute(sql, params if params else ())
+                self.connection.commit()
+                return True
+            except pyodbc.Error as e:
+                logger.error(f"Error al ejecutar el update: {e}")
+                return False
             finally:
                 cursor.close()
                 self.connection.close()
@@ -44,7 +59,7 @@ class Conexion:
                 self.connection.commit()
                 return columnas
             except pyodbc.Error as e:
-                print(f"Error al obtener los nombres de las columnas: {e}")
+                logger.error(f"Error al obtener los nombres de las columnas: {e}")
                 return None
             finally:
                 cursor.close()
@@ -63,12 +78,11 @@ class Conexion:
                 cursor.execute(sql)
                 self.connection.commit()
                 resultado = True
-                print('Consulta ejecutada con éxito',sql)
+                logger.info(f'Consulta ejecutada con éxito: {sql}')
             except pyodbc.Error as e:
-                print(f"Error al ejecutar la consulta: {e}")
-                print(sql)
+                logger.error(f"Error al ejecutar la consulta: {e}")
+                logger.error(f"SQL: {sql}")
             finally:
                 cursor.close()
                 self.connection.close()
         return resultado
-        

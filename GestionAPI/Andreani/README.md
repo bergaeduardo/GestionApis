@@ -20,7 +20,7 @@ Este proyecto proporciona una interfaz robusta y fácil de usar para interactuar
 Asegúrate de tener instalado lo siguiente antes de comenzar:
 
 *   🐍 **Python 3.6+:**  Necesitarás Python en tu sistema.
-*   📦 **`requests`:** Instala la librería con `pip install requests`.
+*   📦 **`aiohttp`:** Instala la librería con `pip install aiohttp`.
 *   🔑 **Credenciales:** Crea un archivo `credenciales.py` con tus credenciales de la API de Andreani:
 
     ```python
@@ -47,7 +47,7 @@ Asegúrate de tener instalado lo siguiente antes de comenzar:
 3.  **Instala dependencias:**
 
     ```bash
-    pip install requests
+    pip install aiohttp
     ```
 
 ### 🎬 Uso
@@ -87,8 +87,3 @@ Este proyecto ha sido inspirado y se ha apoyado en el excelente trabajo realizad
 
 ## 📬 Contacto
 Para soporte técnico, contactar al departamento de TI.
-Email: tu.email@ejemplo.com
-LinkedIn: [Tu perfil](URL)
-Twitter: [@tuusuario](URL)
-
-¡Gracias por pasar!
