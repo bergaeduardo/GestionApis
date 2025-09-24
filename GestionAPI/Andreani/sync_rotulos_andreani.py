@@ -55,6 +55,9 @@ async def process_orders_and_get_labels() -> None:
 
         # Procesar los datos obtenidos
         json_string = datos_db[0][0]
+        if not json_string:
+            logger.info("No hay datos para procesar.")
+            return
         orders_data = json.loads(json_string)
         
         # # Log para ver la estructura completa de los datos
