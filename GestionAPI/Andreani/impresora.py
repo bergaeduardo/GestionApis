@@ -93,12 +93,15 @@ class GhostPrinter(BasePrinter):
             
             command = [
                 self._gsprint_path,
+                "-dPDFFitPage",
                 "-dNOPAUSE",
                 "-dBATCH",
                 "-dNOPROMPT",
                 f"-sDEVICE=mswinpr2",
                 f"-sOutputFile=%printer%{printer_name}",
-                file_path
+                file_path,
+                "-c",
+                "quit"
             ]
             
             logger.debug(f"Imprimiendo con GhostScript: {' '.join(command)}")
