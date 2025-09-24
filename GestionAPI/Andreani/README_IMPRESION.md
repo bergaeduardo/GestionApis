@@ -83,13 +83,17 @@ La forma recomendada de configurar el sistema es a través del archivo `config/p
 
 **Ejemplo de `config/printer_config.json`:**
 ```json
+```json
 {
     "printer": {
-        "method": "ghost",
+        "method": "pdftoprinter",
         "label_printer_path": "\\\\servidor\\nombre_impresora",
+        "pdftoprinter_path": "C:\\path\t o\\PDFtoPrinter.exe",
+        "margins": "0 0 0 0",
         "copies": 1
     }
 }
+```
 ```
 - **method**: Puede ser `"ghost"`, `"win32"` o `"adobe"`. Se recomienda `"ghost"` para servidores.
 - **label_printer_path**: La ruta de red o nombre exacto de la impresora de etiquetas.

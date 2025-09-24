@@ -23,6 +23,7 @@ class PrintMethod(Enum):
     WIN32 = "win32"
     ADOBE = "adobe"
     GHOST = "ghost"
+    PDFTOPRINTER = "pdftoprinter"
 
 class PrinterError(Exception):
     """Custom exception for printer-related errors"""
@@ -124,6 +125,64 @@ class GhostPrinter(BasePrinter):
             logger.error(f"Error al imprimir usando GhostScript: {e}")
             return False
 
+class PDFtoPrinterPrinter(BasePrinter):
+    """Implementation of printing using PDFtoPrinter"""
+
+    def __init__(self):
+        self._pdftoprinter_path = self._find_pdftoprinter()
+
+    def _find_pdftoprinter(self) -> str:
+        """Find PDFtoPrinter installation"""
+        common_paths = [
+            r"C:\Program Files\PDFtoPrinter\PDFtoPrinter.exe",
+            r"C:\Program Files (x86)\PDFtoPrinter\PDFtoPrinter.exe",
+        ]
+        for path in common_paths:
+            if os.path.exists(path):
+                return path
+        
+        from shutil import which
+        if which("PDFtoPrinter.exe"):
+            return "PDFtoPrinter.exe"
+
+        raise PrinterError("PDFtoPrinter.exe no encontrado en rutas comunes o en el PATH.")
+
+
+    def print_file(self, file_path: Union[str, Path], copies: int = 1) -> bool:
+        try:
+            file_path = str(Path(file_path).resolve())
+            printer_name = win32print.GetDefaultPrinter()
+
+            command = [
+                self._pdftoprinter_path,
+                file_path,
+                "-printer",
+                printer_name
+            ]
+            if copies > 1:
+                command.append("-copies")
+                command.append(str(copies))
+
+            logger.debug(f"Imprimiendo con PDFtoPrinter: {' '.join(command)}")
+
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            if result.returncode == 0:
+                logger.info(f"Archivo {file_path} enviado a imprimir usando PDFtoPrinter")
+                return True
+            else:
+                logger.error(f"Error al imprimir usando PDFtoPrinter: {result.stdout} {result.stderr}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error al imprimir usando PDFtoPrinter: {e}")
+            return False
+
 class AdobePrinter(BasePrinter):
     """Implementation of printing using Adobe Reader"""
     
@@ -156,8 +215,8 @@ class AdobePrinter(BasePrinter):
             r"C:\Program Files\Adobe\Acrobat Reader\Reader\AcroRd32.exe",
             r"C:\Program Files (x86)\Adobe\Acrobat Reader\Reader\AcroRd32.exe",
             # Buscar en todas las versiones posibles de Adobe Reader
-            *[f"C:\\Program Files (x86)\\Adobe\\Reader\\{v}\\Reader\\AcroRd32.exe" for v in range(8, 13)],
-            *[f"C:\\Program Files\\Adobe\\Reader\\{v}\\Reader\\AcroRd32.exe" for v in range(8, 13)]
+            *[f"C:\Program Files (x86)\Adobe\Reader\{v}\Reader\AcroRd32.exe" for v in range(8, 13)],
+            *[f"C:\Program Files\Adobe\Reader\{v}\Reader\AcroRd32.exe" for v in range(8, 13)]
         ]
         
         # 4. Buscar en el registro de Windows si las rutas anteriores fallan
@@ -241,51 +300,68 @@ class PrinterManager:
     """
     
     def __init__(self, label_printer_path: Optional[str] = None, 
-                 print_method: Union[str, PrintMethod] = PrintMethod.ADOBE):
+                 print_method: Union[str, PrintMethod] = None):
         """
-        Inicializa el gestor de impresoras.
+        Inicializa el gestor de impresoras. 
         
         Args:
             label_printer_path (str, optional): Ruta de la impresora de etiquetas.
-                Por ejemplo: "\\\\192.168.0.64\\ZDesigner GC420t (EPL)"
-                Si no se proporciona, se debe establecer más tarde con set_label_printer.
+                Si se proporciona, anula la configuración del archivo JSON.
             print_method (Union[str, PrintMethod], optional): Método de impresión a utilizar.
-                Puede ser "win32" o "adobe". Por defecto "adobe".
+                Si se proporciona, anula la configuración del archivo JSON.
         """
-        self._label_printer = label_printer_path
-        self._original_printer = None
-        
-        # Configurar el método de impresión
-        if isinstance(print_method, str):
+        # 1. Cargar configuración desde el archivo JSON
+        config_path = os.path.join(os.path.dirname(__file__), 'config', 'printer_config.json')
+        config_method = None
+        config_label_printer = None
+
+        if os.path.exists(config_path):
             try:
-                self._print_method = PrintMethod(print_method.lower())
+                with open(config_path, 'r') as f:
+                    config = json.load(f).get('printer', {})
+                    config_method = config.get('method')
+                    config_label_printer = config.get('label_printer_path')
+            except Exception as e:
+                logger.warning(f"Error al leer el archivo de configuración {config_path}: {e}")
+
+        # 2. Determinar la configuración final, dando prioridad a los argumentos del constructor
+        final_print_method = print_method or config_method or PrintMethod.ADOBE
+        self._label_printer = label_printer_path or config_label_printer
+        self._original_printer = None
+
+        # 3. Configurar el método de impresión
+        if isinstance(final_print_method, str):
+            try:
+                self._print_method = PrintMethod(final_print_method.lower())
             except ValueError:
-                logger.warning(f"Método de impresión '{print_method}' no válido. Usando Adobe Reader.")
+                logger.warning(f"Método de impresión '{final_print_method}' no válido. Usando Adobe.")
                 self._print_method = PrintMethod.ADOBE
         else:
-            self._print_method = print_method
+            self._print_method = final_print_method
             
-        # Inicializar el printer específico
+        # 4. Inicializar el printer específico
         try:
             if self._print_method == PrintMethod.WIN32:
                 self._printer = Win32Printer()
             elif self._print_method == PrintMethod.GHOST:
                 self._printer = GhostPrinter()
-            else: # Incluye ADOBE y cualquier otro caso
+            elif self._print_method == PrintMethod.PDFTOPRINTER:
+                self._printer = PDFtoPrinterPrinter()
+            else: # Incluye ADOBE y cualquier otro caso por defecto
                 self._printer = AdobePrinter()
         except PrinterError as e:
             logger.error(f"Error al inicializar el método de impresión {self._print_method.value}: {e}")
             logger.info("Cambiando al método alternativo de impresión")
             
-            # Intentar método alternativo
-            self._print_method = (PrintMethod.ADOBE if self._print_method == PrintMethod.WIN32 
+            # Intentar método alternativo (simple fallback)
+            self._print_method = (PrintMethod.ADOBE if self._print_method != PrintMethod.ADOBE 
                                 else PrintMethod.WIN32)
             try:
                 self._printer = (AdobePrinter() if self._print_method == PrintMethod.ADOBE 
                                else Win32Printer())
-            except PrinterError as e:
-                logger.error(f"Error al inicializar el método alternativo: {e}")
-                raise
+            except PrinterError as inner_e:
+                logger.error(f"Error al inicializar el método alternativo: {inner_e}")
+                raise e # Relanzar la excepción original
     
     @property
     def current_printer(self) -> str:
@@ -309,7 +385,7 @@ class PrinterManager:
     
     def set_label_printer(self, printer_path: str) -> None:
         """
-        Establece la ruta de la impresora de etiquetas.
+        Establece la ruta de la impresora de etiquetas. 
         
         Args:
             printer_path (str): Ruta completa de la impresora de etiquetas.
@@ -449,7 +525,7 @@ def rotuladora():
     Returns:
         str: Nombre de la impresora original
     """
-    printer_manager = PrinterManager("\\pc-pedidos-02\ZDesigner GC420t (EPL)")
+    printer_manager = PrinterManager("\\pc-pedidos-02\\ZDesigner GC420t (EPL)")
     printer_manager.switch_to_label_printer()
     return printer_manager.current_printer
 
@@ -472,4 +548,3 @@ def mensaje():
         str: Mensaje con el nombre de la impresora actual
     """
     return 'Impresora: ' + win32print.GetDefaultPrinter()
- 
