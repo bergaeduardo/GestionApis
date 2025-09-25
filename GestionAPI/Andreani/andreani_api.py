@@ -43,26 +43,29 @@ class AndreaniAPI:
             headers["Content-Type"] = "application/json"
 
         try:
-           async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession() as session:
                 async with session.request(
                     method, url, headers=headers, params=params, json=json_data
                 ) as response:
-                  response.raise_for_status()
-                  if response.status == 204:
-                      return None
-                  
-                  content_type = response.headers.get("Content-Type", "")
-                  if "application/json" in content_type:
-                      return await response.json()
-                  else:
-                    return await response.read()
+                    if response.status >= 400:
+                        error_body = await response.text()
+                        print(f"Error en la solicitud a {url}: {response.status} {response.reason}. Respuesta: {error_body}")
+                        return None
+
+                    if response.status == 204:
+                        return None
+                    
+                    content_type = response.headers.get("Content-Type", "")
+                    if "application/json" in content_type:
+                        return await response.json()
+                    else:
+                        return await response.read()
         except aiohttp.ClientError as e:
-          print(f"Error en la solicitud: {e}")
-          # Capturar el mensaje de error y retornar None
-          return None
+            print(f"Error de cliente AIOHTTP al intentar conectar a {url}: {e}")
+            return None
         except Exception as e:
-          print(f"Error no manejado: {e}")
-          return None
+            print(f"Error no manejado en _make_request para {url}: {e}")
+            return None
 
 
     async def buscar_sucursales(self, parametros):
