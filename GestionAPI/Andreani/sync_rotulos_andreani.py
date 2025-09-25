@@ -189,7 +189,7 @@ async def process_orders_and_get_labels() -> None:
                     # Imprimir la etiqueta
                     if printer_manager.print_file(filepath):
                         logger.info(f"Etiqueta enviada a imprimir para el pedido {order_info['numeroPedido']}")
-                        andreani_db.update_imp_rot(order_info['numeroPedido'])
+                        andreani_db.update_imp_rot(order_info['numeroPedido'], order_info['numeroEnvio'])
                     else:
                         logger.error(f"Error al imprimir la etiqueta para el pedido {order_info['numeroPedido']}")
                         
