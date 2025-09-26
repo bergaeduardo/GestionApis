@@ -64,6 +64,8 @@ def main():
                     registro['Detalle'].append({
                         "DescripcionItem": detalle['Detalle.CodArticulo'],
                         "Cantidad": str(detalle['Detalle.Cantidad']),
+                        "Alicuota": str(detalle['Detalle.Alicuota']),
+                        "Rubro": str(detalle['Detalle.Rubro']),
                         "ImporteNeto": str(detalle['Detalle.Importe']),
                         "ImporteImpuestos": str(detalle['Detalle.IVA'])
                     })
@@ -75,6 +77,8 @@ def main():
                     'Detalle': [{
                         "DescripcionItem": detalle['Detalle.CodArticulo'],
                         "Cantidad": str(detalle['Detalle.Cantidad']),
+                        "Alicuota": str(detalle['Detalle.Alicuota']),
+                        "Rubro": str(detalle['Detalle.Rubro']),
                         "ImporteNeto": str(detalle['Detalle.Importe']),
                         "ImporteImpuestos": str(detalle['Detalle.IVA'])
                     }]
