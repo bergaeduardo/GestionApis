@@ -33,19 +33,20 @@ class AndreaniDB:
             logger.error(f"Error al obtener datos de SEIN_TABLA_TEMPORAL_SCRIPT: {e}")
             return None
 
-    def update_imp_rot(self, nro_pedido):
+    def update_imp_rot(self, nro_pedido, numero_envio):
         """
-        Actualiza el campo IMP_ROT a 1 para un pedido específico.
+        Actualiza el campo IMP_ROT a 1 y el NUM_SEGUIMIENTO para un pedido específico.
         """
         # Agregar un caracter vacio por delante para evitar errores de SQL Server
         nro_pedido = f" {nro_pedido}"
         try:
-            if self.conexion.ejecutar_update(QRY_UPDATE_IMP_ROT, (nro_pedido,)):
-                logger.info(f"IMP_ROT actualizado para el pedido {nro_pedido}.")
+            # La consulta ahora espera (numero_envio, nro_pedido)
+            if self.conexion.ejecutar_update(QRY_UPDATE_IMP_ROT, (numero_envio, nro_pedido)):
+                logger.info(f"IMP_ROT y NUM_SEGUIMIENTO actualizados para el pedido {nro_pedido}.")
                 return True
             else:
-                logger.error(f"Fallo al ejecutar el update de IMP_ROT para el pedido {nro_pedido}.")
+                logger.error(f"Fallo al ejecutar el update de IMP_ROT y NUM_SEGUIMIENTO para el pedido {nro_pedido}.")
                 return False
         except Exception as e:
-            logger.error(f"Error al actualizar IMP_ROT para el pedido {nro_pedido}: {e}")
+            logger.error(f"Error al actualizar IMP_ROT y NUM_SEGUIMIENTO para el pedido {nro_pedido}: {e}")
             return False
