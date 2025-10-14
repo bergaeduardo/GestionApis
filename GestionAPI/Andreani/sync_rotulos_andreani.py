@@ -15,7 +15,7 @@ from GestionAPI.Andreani.impresora import PrinterManager
 
 from GestionAPI.Andreani.andreani_api import AndreaniAPI
 from GestionAPI.Andreani.db_operations_andreani import AndreaniDB
-from GestionAPI.common.credenciales import DATA_QA as DATA_PROD
+from GestionAPI.common.credenciales import DATA_PROD as DATA_PROD
 from GestionAPI.common.logger_config import setup_logger
 
 # Configuración del logger
