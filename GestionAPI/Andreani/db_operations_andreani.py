@@ -1,7 +1,7 @@
 import logging
 from GestionAPI.common.conexion import Conexion
 from GestionAPI.common.credenciales import CENTRAL_LAKERS
-from GestionAPI.Andreani.consultas import QRY_GET_DATA_FROM_SEIN, QRY_UPDATE_IMP_ROT
+from GestionAPI.Andreani.consultas import QRY_GET_DATA_FROM_SEIN, QRY_UPDATE_IMP_ROT, QRY_GET_ENVIOS_PENDIENTES, QRY_UPDATE_ESTADO_ENVIO
 
 logger = logging.getLogger('andreani_rotulos')
 
@@ -49,4 +49,36 @@ class AndreaniDB:
                 return False
         except Exception as e:
             logger.error(f"Error al actualizar IMP_ROT y NUM_SEGUIMIENTO para el pedido {nro_pedido}: {e}")
+            return False
+
+    def get_envios_pendientes(self):
+        """
+        Obtiene los envíos con IMP_ROT=1, NUM_SEGUIMIENTO IS NOT NULL y estadoIdEnvio <> 18.
+        """
+        try:
+            resultados = self.conexion.ejecutar_consulta(QRY_GET_ENVIOS_PENDIENTES)
+            
+            if resultados:
+                logger.info(f"Se encontraron {len(resultados)} envíos pendientes de actualización.")
+                return resultados
+            else:
+                logger.info("No se encontraron envíos pendientes de actualización.")
+                return []
+        except Exception as e:
+            logger.error(f"Error al obtener envíos pendientes: {e}")
+            return []
+
+    def update_estado_envio(self, num_seguimiento, estado, estado_id, fecha_estado):
+        """
+        Actualiza el estado del envío en la tabla SEIN_TABLA_TEMPORAL_SCRIPT.
+        """
+        try:
+            if self.conexion.ejecutar_update(QRY_UPDATE_ESTADO_ENVIO, (estado, estado_id, fecha_estado, num_seguimiento)):
+                logger.info(f"Estado del envío actualizado para el seguimiento {num_seguimiento}.")
+                return True
+            else:
+                logger.error(f"Fallo al actualizar el estado del envío para el seguimiento {num_seguimiento}.")
+                return False
+        except Exception as e:
+            logger.error(f"Error al actualizar el estado del envío para el seguimiento {num_seguimiento}: {e}")
             return False
