@@ -79,8 +79,9 @@ async def actualizar_estados_envios():
     for registro in envios_pendientes:
         nro_pedido = registro[0]
         num_seguimiento = registro[1]
+        talon_ped = registro[2] if len(registro) > 2 else None
         
-        logger.info(f"Procesando pedido {nro_pedido} - Seguimiento: {num_seguimiento}")
+        logger.info(f"Procesando pedido {nro_pedido} - Seguimiento: {num_seguimiento} - Talon: {talon_ped}")
         
         # Consultar estado del envío en la API
         estado_info = await consultar_estado_envio_api(num_seguimiento)
@@ -90,8 +91,8 @@ async def actualizar_estados_envios():
             estado_id = estado_info.get("estadoId")
             fecha_estado = estado_info.get("fechaEstado")
             
-            # Actualizar en la base de datos
-            if db.update_estado_envio(num_seguimiento, estado, estado_id, fecha_estado):
+            # Actualizar en la base de datos (pasando nro_pedido y talon_ped)
+            if db.update_estado_envio(num_seguimiento, estado, estado_id, fecha_estado, nro_pedido, talon_ped):
                 logger.info(f"✓ Pedido {nro_pedido} actualizado: {estado} (ID: {estado_id})")
                 envios_actualizados += 1
             else:
@@ -141,13 +142,18 @@ async def main():
             print("\nInformación del envío:")
             print(resultado)
             
+            # Obtener el número de pedido y talon_ped desde la base de datos
+            nro_pedido, talon_ped = db.get_pedido_by_seguimiento(args.numero_envio)
+            
             # Guardar en la base de datos
             estado = resultado.get("estado")
             estado_id = resultado.get("estadoId")
             fecha_estado = resultado.get("fechaEstado")
             
-            if db.update_estado_envio(args.numero_envio, estado, estado_id, fecha_estado):
+            if db.update_estado_envio(args.numero_envio, estado, estado_id, fecha_estado, nro_pedido, talon_ped):
                 print(f"\n✓ Estado actualizado en la base de datos para el envío {args.numero_envio}")
+                if estado_id == 18 and nro_pedido and talon_ped:
+                    print(f"✓ Tabla RO_T_ESTADO_PEDIDOS_ECOMMERCE también actualizada para el pedido {nro_pedido}, talon {talon_ped}")
             else:
                 print(f"\n✗ No se pudo actualizar el estado en la base de datos")
         else:
