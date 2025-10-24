@@ -81,37 +81,48 @@ class AndreaniDB:
         Si el estado es 18 (Entregado), también actualiza la tabla RO_T_ESTADO_PEDIDOS_ECOMMERCE.
         """
         try:
-            if self.conexion.ejecutar_update(QRY_UPDATE_ESTADO_ENVIO, (estado, estado_id, fecha_estado, num_seguimiento)):
+            # Convertir fecha de formato ISO 8601 a formato SQL Server
+            from datetime import datetime
+            if isinstance(fecha_estado, str):
+                try:
+                    fecha_dt = datetime.fromisoformat(fecha_estado.replace('Z', '+00:00'))
+                    fecha_formateada = fecha_dt.strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    fecha_formateada = fecha_estado
+                    logger.warning(f"No se pudo convertir la fecha, usando valor original: {fecha_estado}")
+            else:
+                fecha_formateada = fecha_estado
+            
+            if self.conexion.ejecutar_update(QRY_UPDATE_ESTADO_ENVIO, (estado, estado_id, fecha_formateada, num_seguimiento)):
                 logger.info(f"Estado del envío actualizado para el seguimiento {num_seguimiento}.")
                 
                 # Si el estado es 18 (Entregado), actualizar también RO_T_ESTADO_PEDIDOS_ECOMMERCE
-                if estado_id == 18 and nro_pedido and talon_ped:
-                    try:
-                        # Limpiar los valores (quitar espacios)
-                        nro_pedido_limpio = str(nro_pedido).strip()
-                        talon_ped_limpio = str(talon_ped).strip()
-                        
-                        # Convertir fecha de formato ISO 8601 a formato SQL Server
-                        from datetime import datetime
-                        if isinstance(fecha_estado, str):
-                            try:
-                                fecha_dt = datetime.fromisoformat(fecha_estado.replace('Z', '+00:00'))
-                                fecha_formateada = fecha_dt.strftime('%Y-%m-%d %H:%M:%S')
-                            except:
-                                fecha_formateada = fecha_estado
-                                logger.warning(f"No se pudo convertir la fecha, usando valor original: {fecha_estado}")
-                        else:
-                            fecha_formateada = fecha_estado
-                        
-                        # Ejecutar el UPDATE
-                        if self.conexion.ejecutar_update(QRY_UPDATE_ENTREGADO, (fecha_formateada, nro_pedido_limpio, talon_ped_limpio)):
-                            logger.info(f"Tabla RO_T_ESTADO_PEDIDOS_ECOMMERCE actualizada para el pedido {nro_pedido_limpio}, talon {talon_ped_limpio}.")
-                        else:
-                            logger.warning(f"No se pudo actualizar RO_T_ESTADO_PEDIDOS_ECOMMERCE para el pedido {nro_pedido_limpio}, talon {talon_ped_limpio}.")
-                    except Exception as e:
-                        logger.error(f"Error al actualizar RO_T_ESTADO_PEDIDOS_ECOMMERCE para el pedido {nro_pedido}, talon {talon_ped}: {e}")
-                elif estado_id == 18 and not talon_ped:
-                    logger.warning(f"No se puede actualizar RO_T_ESTADO_PEDIDOS_ECOMMERCE: falta TALON_PED para el pedido {nro_pedido}")
+                if estado_id == 18:
+                    logger.info(f"Estado ID es 18 (Entregado) - Verificando actualización de tabla RO_T_ESTADO_PEDIDOS_ECOMMERCE")
+                    logger.info(f"Parámetros recibidos: nro_pedido={nro_pedido}, talon_ped={talon_ped}")
+                    
+                    if nro_pedido and talon_ped:
+                        try:
+                            # Limpiar los valores (quitar espacios)
+                            nro_pedido_limpio = str(nro_pedido).strip()
+                            talon_ped_limpio = str(talon_ped).strip()
+                            
+                            logger.info(f"Valores limpiados: nro_pedido={nro_pedido_limpio}, talon_ped={talon_ped_limpio}, fecha={fecha_formateada}")
+                            
+                            # Ejecutar el UPDATE
+                            resultado = self.conexion.ejecutar_update(QRY_UPDATE_ENTREGADO, (fecha_formateada, nro_pedido_limpio, talon_ped_limpio))
+                            logger.info(f"Resultado de ejecutar_update: {resultado}")
+                            
+                            if resultado:
+                                logger.info(f"✓ Tabla RO_T_ESTADO_PEDIDOS_ECOMMERCE actualizada para el pedido {nro_pedido_limpio}, talon {talon_ped_limpio}.")
+                            else:
+                                logger.warning(f"⚠ No se pudo actualizar RO_T_ESTADO_PEDIDOS_ECOMMERCE para el pedido {nro_pedido_limpio}, talon {talon_ped_limpio}. El registro podría no existir.")
+                        except Exception as e:
+                            logger.error(f"✗ Error al actualizar RO_T_ESTADO_PEDIDOS_ECOMMERCE para el pedido {nro_pedido}, talon {talon_ped}: {e}")
+                    elif not nro_pedido:
+                        logger.warning(f"⚠ No se puede actualizar RO_T_ESTADO_PEDIDOS_ECOMMERCE: falta NRO_PEDIDO")
+                    elif not talon_ped:
+                        logger.warning(f"⚠ No se puede actualizar RO_T_ESTADO_PEDIDOS_ECOMMERCE: falta TALON_PED para el pedido {nro_pedido}")
                 
                 return True
             else:

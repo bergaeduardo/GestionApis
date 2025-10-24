@@ -36,19 +36,51 @@ class Conexion:
                 cursor.close()
                 self.connection.close()
 
-    def ejecutar_update(self, sql, params=None):
+    def ejecutar_update(self, sql, params=None, max_retries=3):
         cursor = self.conectar()
         if cursor:
-            try:
-                cursor.execute(sql, params if params else ())
-                self.connection.commit()
-                return True
-            except pyodbc.Error as e:
-                logger.error(f"Error al ejecutar el update: {e}")
-                return False
-            finally:
+            retry_count = 0
+            while retry_count <= max_retries:
+                try:
+                    cursor.execute(sql, params if params else ())
+                    self.connection.commit()
+                    cursor.close()
+                    self.connection.close()
+                    return True
+                except pyodbc.Error as e:
+                    error_code = e.args[0] if e.args else None
+                    
+                    # Si es un deadlock (código 40001 o 1205), reintentar
+                    if error_code in ('40001', '1205') and retry_count < max_retries:
+                        retry_count += 1
+                        logger.warning(f"Deadlock detectado. Reintentando ({retry_count}/{max_retries})...")
+                        import time
+                        time.sleep(1 * retry_count)  # Esperar 1, 2, 3 segundos
+                        continue
+                    
+                    logger.error(f"Error al ejecutar el update: {e}")
+                    if cursor:
+                        cursor.close()
+                    if self.connection:
+                        self.connection.close()
+                    return False
+                except Exception as e:
+                    logger.error(f"Error inesperado al ejecutar el update: {e}")
+                    if cursor:
+                        cursor.close()
+                    if self.connection:
+                        self.connection.close()
+                    return False
+            
+            # Si llegamos aquí, se agotaron los reintentos
+            logger.error(f"Se agotaron los reintentos ({max_retries}) para el update")
+            if cursor:
                 cursor.close()
+            if self.connection:
                 self.connection.close()
+            return False
+        
+        return False
 
     def obtener_nombres_columnas(self, sql):
         cursor = self.conectar()
