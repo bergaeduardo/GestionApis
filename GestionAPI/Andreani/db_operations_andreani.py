@@ -3,7 +3,9 @@ from GestionAPI.common.conexion import Conexion
 from GestionAPI.common.credenciales import CENTRAL_LAKERS
 from GestionAPI.Andreani.consultas import (
     QRY_GET_DATA_FROM_SEIN, 
+    QRY_UPDATE_NUM_SEGUIMIENTO,
     QRY_UPDATE_IMP_ROT, 
+    QRY_GET_PEDIDOS_SIN_IMPRIMIR,
     QRY_GET_ENVIOS_PENDIENTES, 
     QRY_UPDATE_ESTADO_ENVIO, 
     QRY_UPDATE_ENTREGADO,
@@ -40,23 +42,68 @@ class AndreaniDB:
             logger.error(f"Error al obtener datos de SEIN_TABLA_TEMPORAL_SCRIPT: {e}")
             return None
 
-    def update_imp_rot(self, nro_pedido, numero_envio):
+    def update_imp_rot(self, nro_pedido, numero_envio=None):
         """
-        Actualiza el campo IMP_ROT a 1 y el NUM_SEGUIMIENTO para un pedido específico.
+        Actualiza el campo IMP_ROT a 1 para un pedido específico.
+        Si se proporciona numero_envio, también actualiza NUM_SEGUIMIENTO.
         """
         # Agregar un caracter vacio por delante para evitar errores de SQL Server
         nro_pedido = f" {nro_pedido}"
         try:
-            # La consulta ahora espera (numero_envio, nro_pedido)
-            if self.conexion.ejecutar_update(QRY_UPDATE_IMP_ROT, (numero_envio, nro_pedido)):
-                logger.info(f"IMP_ROT y NUM_SEGUIMIENTO actualizados para el pedido {nro_pedido}.")
+            if numero_envio:
+                # Actualizar solo NUM_SEGUIMIENTO
+                if self.conexion.ejecutar_update(QRY_UPDATE_NUM_SEGUIMIENTO, (numero_envio, nro_pedido)):
+                    logger.info(f"NUM_SEGUIMIENTO actualizado para el pedido {nro_pedido}.")
+                else:
+                    logger.error(f"Fallo al ejecutar el update de NUM_SEGUIMIENTO para el pedido {nro_pedido}.")
+                    return False
+            
+            # Actualizar IMP_ROT
+            if self.conexion.ejecutar_update(QRY_UPDATE_IMP_ROT, (nro_pedido,)):
+                logger.info(f"IMP_ROT actualizado para el pedido {nro_pedido}.")
                 return True
             else:
-                logger.error(f"Fallo al ejecutar el update de IMP_ROT y NUM_SEGUIMIENTO para el pedido {nro_pedido}.")
+                logger.error(f"Fallo al ejecutar el update de IMP_ROT para el pedido {nro_pedido}.")
                 return False
         except Exception as e:
-            logger.error(f"Error al actualizar IMP_ROT y NUM_SEGUIMIENTO para el pedido {nro_pedido}: {e}")
+            logger.error(f"Error al actualizar IMP_ROT para el pedido {nro_pedido}: {e}")
             return False
+
+    def update_num_seguimiento(self, nro_pedido, numero_envio):
+        """
+        Actualiza solo el NUM_SEGUIMIENTO para un pedido específico.
+        """
+        # Agregar un caracter vacio por delante para evitar errores de SQL Server
+        nro_pedido = f" {nro_pedido}"
+        try:
+            if self.conexion.ejecutar_update(QRY_UPDATE_NUM_SEGUIMIENTO, (numero_envio, nro_pedido)):
+                logger.info(f"NUM_SEGUIMIENTO actualizado para el pedido {nro_pedido}: {numero_envio}")
+                return True
+            else:
+                logger.error(f"Fallo al ejecutar el update de NUM_SEGUIMIENTO para el pedido {nro_pedido}.")
+                return False
+        except Exception as e:
+            logger.error(f"Error al actualizar NUM_SEGUIMIENTO para el pedido {nro_pedido}: {e}")
+            return False
+
+    def get_pedidos_sin_imprimir(self):
+        """
+        Obtiene los pedidos que tienen NUM_SEGUIMIENTO pero IMP_ROT = 0.
+        Retorna una lista de tuplas (nro_pedido, num_seguimiento).
+        """
+        try:
+            resultados = self.conexion.ejecutar_consulta(QRY_GET_PEDIDOS_SIN_IMPRIMIR)
+            
+            if resultados:
+                logger.info(f"Se encontraron {len(resultados)} pedidos con envío creado pero sin imprimir.")
+                return resultados
+            else:
+                logger.debug("No se encontraron pedidos con envío creado pendientes de impresión.")
+                return []
+        except Exception as e:
+            logger.error(f"Error al obtener pedidos sin imprimir: {e}")
+            return []
+
 
     def get_envios_pendientes(self):
         """

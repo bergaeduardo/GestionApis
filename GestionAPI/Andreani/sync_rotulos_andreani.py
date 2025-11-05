@@ -47,81 +47,102 @@ async def process_orders_and_get_labels() -> None:
     try:
         andreani_db = AndreaniDB()
         logger.info("Conexión exitosa a la base de datos")
+        
+        # Lista para almacenar información de pedidos a imprimir
+        orders_to_print = []
+        
+        # PASO 1: Verificar si hay pedidos con número de envío pero sin imprimir
+        pedidos_sin_imprimir = andreani_db.get_pedidos_sin_imprimir()
+        
+        if pedidos_sin_imprimir:
+            logger.info(f"Procesando {len(pedidos_sin_imprimir)} pedidos con envío creado pendientes de impresión")
+            
+            # Obtener etiquetas para pedidos que ya tienen número de envío
+            for pedido_data in pedidos_sin_imprimir:
+                nro_pedido = pedido_data[0].strip() if pedido_data[0] else None
+                num_seguimiento = pedido_data[1].strip() if pedido_data[1] else None
+                
+                if nro_pedido and num_seguimiento:
+                    # Obtener el número de agrupador desde Andreani usando el número de seguimiento
+                    # Como no tenemos el agrupador guardado, necesitamos consultar a Andreani
+                    # Por simplicidad, usaremos el número de seguimiento como referencia
+                    orders_to_print.append({
+                        "numeroPedido": nro_pedido,
+                        "numeroEnvio": num_seguimiento,
+                        "numeroAgrupador": num_seguimiento  # Usamos el número de envío para obtener la etiqueta
+                    })
+                    logger.info(f"Pedido sin imprimir agregado - Pedido: {nro_pedido}, Envío: {num_seguimiento}")
+        
+        # PASO 2: Procesar nuevos pedidos (sin número de envío)
         datos_db = andreani_db.get_data_from_sein()
         
-        if not datos_db:
-            logger.info("No se encontraron pedidos pendientes para procesar")
-            return
-
-        # Procesar los datos obtenidos
-        json_string = datos_db[0][0]
-        if not json_string:
-            logger.info("No hay datos para procesar.")
-            return
-        orders_data = json.loads(json_string)
-        
-        # # Log para ver la estructura completa de los datos
-        # logger.debug(f"Estructura completa de datos: {json.dumps(orders_data, indent=2)}")
-        
-        orders = orders_data.get("data", [])
-        
-        if not orders:
-            logger.info("No hay órdenes para procesar en los datos obtenidos")
-            return
-        
-        logger.info(f"Se encontraron {len(orders)} pedidos para procesar")
-        
-        # Lista para almacenar las tareas de creación de órdenes
-        create_order_tasks = []
-        
-        # Preparar las órdenes para el proceso
-        for order in orders:
-            # # Registrar la estructura del pedido para debugging
-            # logger.debug(f"Estructura del pedido: {json.dumps(order, indent=2)}")
-            
-            # Ajustar el formato de 'postal' en 'origen' y 'destino'
-            if 'origen' in order and 'postal' in order['origen'] and isinstance(order['origen']['postal'], list):
-                order['origen']['postal'] = order['origen']['postal'][0]
-            if 'destino' in order and 'postal' in order['destino'] and isinstance(order['destino']['postal'], list):
-                order['destino']['postal'] = order['destino']['postal'][0]
-            
-            create_order_tasks.append(api.crear_orden_envio(order))
-
-        # Procesar todas las órdenes de envío
-        orders_results = await asyncio.gather(*create_order_tasks, return_exceptions=True)
-        
-        # Procesar los resultados y crear las tareas para las etiquetas
-        label_tasks = []
-        order_numbers = []  # Para almacenar la relación orden-número de envío
-        
-        for order, result in zip(orders, orders_results):
-            if isinstance(result, Exception):
-                logger.error(f"Error al crear orden de envío: {result}")
-                continue
-            
-            if result is None:
-                logger.error(f"No se pudo crear la orden de envío para el pedido {order.get('idPedido')}, el resultado de la API fue nulo.")
-                continue
+        if datos_db:
+            # Procesar los datos obtenidos
+            json_string = datos_db[0][0]
+            if json_string:
+                orders_data = json.loads(json_string)
+                orders = orders_data.get("data", [])
                 
-            numero_envio = result.get("numeroEnvio")
-            numero_agrupador = result.get("numeroAgrupador")
-            
-            # Obtener el número de pedido del campo idPedido
-            numero_pedido = order.get("idPedido", "No especificado")
-            
-            if numero_agrupador:
-                order_numbers.append({
-                    "numeroPedido": numero_pedido,
-                    "numeroEnvio": numero_envio,
-                    "numeroAgrupador": numero_agrupador
-                })
-                logger.info(f"Orden creada - Pedido: {numero_pedido}, Envío: {numero_envio}, Agrupador: {numero_agrupador}")
-                label_tasks.append(api.obtener_etiquetas(numero_agrupador))
+                if orders:
+                    logger.info(f"Se encontraron {len(orders)} pedidos nuevos para procesar")
+                    
+                    # Lista para almacenar las tareas de creación de órdenes
+                    create_order_tasks = []
+                    
+                    # Preparar las órdenes para el proceso
+                    for order in orders:
+                        # Ajustar el formato de 'postal' en 'origen' y 'destino'
+                        if 'origen' in order and 'postal' in order['origen'] and isinstance(order['origen']['postal'], list):
+                            order['origen']['postal'] = order['origen']['postal'][0]
+                        if 'destino' in order and 'postal' in order['destino'] and isinstance(order['destino']['postal'], list):
+                            order['destino']['postal'] = order['destino']['postal'][0]
+                        
+                        create_order_tasks.append(api.crear_orden_envio(order))
 
-        if not label_tasks:
-            logger.warning("No se generaron tareas para obtener etiquetas")
+                    # Procesar todas las órdenes de envío
+                    orders_results = await asyncio.gather(*create_order_tasks, return_exceptions=True)
+                    
+                    # Procesar los resultados y guardar número de envío inmediatamente
+                    for order, result in zip(orders, orders_results):
+                        if isinstance(result, Exception):
+                            logger.error(f"Error al crear orden de envío: {result}")
+                            continue
+                        
+                        if result is None:
+                            logger.error(f"No se pudo crear la orden de envío para el pedido {order.get('idPedido')}, el resultado de la API fue nulo.")
+                            continue
+                            
+                        numero_envio = result.get("numeroEnvio")
+                        numero_agrupador = result.get("numeroAgrupador")
+                        numero_pedido = order.get("idPedido", "No especificado")
+                        
+                        if numero_agrupador and numero_envio:
+                            # IMPORTANTE: Guardar el número de envío inmediatamente después de crear la orden
+                            if andreani_db.update_num_seguimiento(numero_pedido, numero_envio):
+                                logger.info(f"Orden creada y NUM_SEGUIMIENTO guardado - Pedido: {numero_pedido}, Envío: {numero_envio}, Agrupador: {numero_agrupador}")
+                                
+                                orders_to_print.append({
+                                    "numeroPedido": numero_pedido,
+                                    "numeroEnvio": numero_envio,
+                                    "numeroAgrupador": numero_agrupador
+                                })
+                            else:
+                                logger.error(f"No se pudo guardar NUM_SEGUIMIENTO para el pedido {numero_pedido}")
+            else:
+                logger.debug("No hay datos JSON para procesar nuevos pedidos.")
+        
+        # PASO 3: Si no hay pedidos para imprimir, terminar
+        if not orders_to_print:
+            logger.info("No hay pedidos para imprimir en este momento")
             return
-
+        
+        logger.info(f"Total de pedidos a procesar para impresión: {len(orders_to_print)}")
+        
+        # PASO 4: Obtener etiquetas para todos los pedidos
+        label_tasks = []
+        for order_info in orders_to_print:
+            label_tasks.append(api.obtener_etiquetas(order_info["numeroAgrupador"]))
+        
         # Obtener todas las etiquetas
         labels_results = await asyncio.gather(*label_tasks, return_exceptions=True)
 
@@ -160,7 +181,7 @@ async def process_orders_and_get_labels() -> None:
                 return
             
             # Procesar y guardar las etiquetas
-            for order_info, label_result in zip(order_numbers, labels_results):
+            for order_info, label_result in zip(orders_to_print, labels_results):
                 if isinstance(label_result, Exception):
                     logger.error(f"Error al obtener etiqueta para el pedido {order_info['numeroPedido']}: {label_result}")
                     continue
@@ -189,7 +210,8 @@ async def process_orders_and_get_labels() -> None:
                     # Imprimir la etiqueta
                     if printer_manager.print_file(filepath):
                         logger.info(f"Etiqueta enviada a imprimir para el pedido {order_info['numeroPedido']}")
-                        andreani_db.update_imp_rot(order_info['numeroPedido'], order_info['numeroEnvio'])
+                        # Marcar como impreso (IMP_ROT = 1)
+                        andreani_db.update_imp_rot(order_info['numeroPedido'])
                     else:
                         logger.error(f"Error al imprimir la etiqueta para el pedido {order_info['numeroPedido']}")
                         
