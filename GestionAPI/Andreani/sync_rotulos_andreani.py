@@ -224,27 +224,27 @@ async def process_orders_and_get_labels() -> None:
                         print_result = printer_manager.print_file(filepath)
                         
                         if print_result:
-                            logger.info(f"✓ Etiqueta enviada a imprimir correctamente - Pedido: {order_info['numeroPedido']}")
+                            logger.info(f"[OK] Etiqueta enviada a imprimir correctamente - Pedido: {order_info['numeroPedido']}")
                             # Marcar como impreso (IMP_ROT = 1)
                             if andreani_db.update_imp_rot(order_info['numeroPedido']):
-                                logger.info(f"✓ Base de datos actualizada (IMP_ROT=1) - Pedido: {order_info['numeroPedido']}")
+                                logger.info(f"[OK] Base de datos actualizada (IMP_ROT=1) - Pedido: {order_info['numeroPedido']}")
                             else:
-                                logger.error(f"✗ No se pudo actualizar IMP_ROT en la base de datos - Pedido: {order_info['numeroPedido']}")
+                                logger.error(f"[ERROR] No se pudo actualizar IMP_ROT en la base de datos - Pedido: {order_info['numeroPedido']}")
                         else:
                             logger.error(
-                                f"✗ ERROR DE IMPRESIÓN - Pedido: {order_info['numeroPedido']}\n"
+                                f"[ERROR] ERROR DE IMPRESION - Pedido: {order_info['numeroPedido']}\n"
                                 f"  - Archivo: {filepath}\n"
-                                f"  - Tamaño: {file_size} bytes\n"
-                                f"  - Método de impresión: {printer_method}\n"
+                                f"  - Tamano: {file_size} bytes\n"
+                                f"  - Metodo de impresion: {printer_method}\n"
                                 f"  - Impresora: {printer_path}\n"
                                 f"  - Verificar: Conectividad de red, estado de la impresora, permisos de archivo"
                             )
                     except Exception as print_error:
                         logger.error(
-                            f"✗ EXCEPCIÓN AL IMPRIMIR - Pedido: {order_info['numeroPedido']}\n"
+                            f"[ERROR] EXCEPCION AL IMPRIMIR - Pedido: {order_info['numeroPedido']}\n"
                             f"  - Error: {type(print_error).__name__}: {str(print_error)}\n"
                             f"  - Archivo: {filepath}\n"
-                            f"  - Método: {printer_method}\n"
+                            f"  - Metodo: {printer_method}\n"
                             f"  - Impresora: {printer_path}",
                             exc_info=True
                         )
