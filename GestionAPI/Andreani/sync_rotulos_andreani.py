@@ -207,13 +207,47 @@ async def process_orders_and_get_labels() -> None:
                         etiqueta_file.write(label_result)
                     logger.info(f"Etiqueta guardada como '{filepath}' para el pedido {order_info['numeroPedido']}")
                     
+                    # Verificar que el archivo PDF se haya guardado correctamente
+                    if not os.path.exists(filepath):
+                        logger.error(f"ERROR CRÍTICO: El archivo de etiqueta no se pudo guardar en {filepath}")
+                        continue
+                    
+                    file_size = os.path.getsize(filepath)
+                    if file_size == 0:
+                        logger.error(f"ERROR CRÍTICO: El archivo de etiqueta está vacío (0 bytes) - Pedido: {order_info['numeroPedido']}")
+                        continue
+                    
+                    logger.debug(f"Archivo PDF validado - Tamaño: {file_size} bytes")
+                    
                     # Imprimir la etiqueta
-                    if printer_manager.print_file(filepath):
-                        logger.info(f"Etiqueta enviada a imprimir para el pedido {order_info['numeroPedido']}")
-                        # Marcar como impreso (IMP_ROT = 1)
-                        andreani_db.update_imp_rot(order_info['numeroPedido'])
-                    else:
-                        logger.error(f"Error al imprimir la etiqueta para el pedido {order_info['numeroPedido']}")
+                    try:
+                        print_result = printer_manager.print_file(filepath)
+                        
+                        if print_result:
+                            logger.info(f"✓ Etiqueta enviada a imprimir correctamente - Pedido: {order_info['numeroPedido']}")
+                            # Marcar como impreso (IMP_ROT = 1)
+                            if andreani_db.update_imp_rot(order_info['numeroPedido']):
+                                logger.info(f"✓ Base de datos actualizada (IMP_ROT=1) - Pedido: {order_info['numeroPedido']}")
+                            else:
+                                logger.error(f"✗ No se pudo actualizar IMP_ROT en la base de datos - Pedido: {order_info['numeroPedido']}")
+                        else:
+                            logger.error(
+                                f"✗ ERROR DE IMPRESIÓN - Pedido: {order_info['numeroPedido']}\n"
+                                f"  - Archivo: {filepath}\n"
+                                f"  - Tamaño: {file_size} bytes\n"
+                                f"  - Método de impresión: {printer_method}\n"
+                                f"  - Impresora: {printer_path}\n"
+                                f"  - Verificar: Conectividad de red, estado de la impresora, permisos de archivo"
+                            )
+                    except Exception as print_error:
+                        logger.error(
+                            f"✗ EXCEPCIÓN AL IMPRIMIR - Pedido: {order_info['numeroPedido']}\n"
+                            f"  - Error: {type(print_error).__name__}: {str(print_error)}\n"
+                            f"  - Archivo: {filepath}\n"
+                            f"  - Método: {printer_method}\n"
+                            f"  - Impresora: {printer_path}",
+                            exc_info=True
+                        )
                         
                     # Dar tiempo a Adobe Reader para procesar el archivo
                     import time

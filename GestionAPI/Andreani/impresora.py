@@ -44,12 +44,19 @@ class Win32Printer(BasePrinter):
         try:
             file_path = str(Path(file_path).resolve())
             
+            if not os.path.exists(file_path):
+                logger.error(f"Win32Printer: El archivo no existe - {file_path}")
+                return False
+            
+            printer_name = win32print.GetDefaultPrinter()
+            logger.debug(f"Win32Printer: Imprimiendo en {printer_name}")
+            
             # Inicializar objeto de impresión
             win32api.ShellExecute(
                 0,                  # Handle parent (0 = desktop)
                 "printto",          # Operación
                 file_path,          # Archivo a imprimir
-                '"%s"' % win32print.GetDefaultPrinter(),  # Impresora
+                '"%s"' % printer_name,  # Impresora
                 ".",                # Directorio de trabajo
                 0                   # Mostrar la ventana (0 = oculta)
             )
@@ -57,8 +64,11 @@ class Win32Printer(BasePrinter):
             logger.info(f"Archivo {file_path} enviado a imprimir usando Win32API")
             return True
             
+        except win32api.error as e:
+            logger.error(f"Win32API error al imprimir: Código {e.winerror} - {e.strerror}", exc_info=True)
+            return False
         except Exception as e:
-            logger.error(f"Error al imprimir usando Win32API: {e}")
+            logger.error(f"Error inesperado al imprimir usando Win32API: {type(e).__name__}: {e}", exc_info=True)
             return False
 
 class GhostPrinter(BasePrinter):
@@ -169,18 +179,32 @@ class PDFtoPrinterPrinter(BasePrinter):
                 command,
                 capture_output=True,
                 text=True,
+                timeout=60,  # Timeout de 60 segundos
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
 
             if result.returncode == 0:
                 logger.info(f"Archivo {file_path} enviado a imprimir usando PDFtoPrinter")
+                if result.stdout:
+                    logger.debug(f"PDFtoPrinter stdout: {result.stdout}")
                 return True
             else:
-                logger.error(f"Error al imprimir usando PDFtoPrinter: {result.stdout} {result.stderr}")
+                error_msg = f"Error al imprimir usando PDFtoPrinter - ReturnCode: {result.returncode}"
+                if result.stdout:
+                    error_msg += f"\nStdout: {result.stdout.strip()}"
+                if result.stderr:
+                    error_msg += f"\nStderr: {result.stderr.strip()}"
+                logger.error(error_msg)
                 return False
-
+                
+        except subprocess.TimeoutExpired as e:
+            logger.error(f"PDFtoPrinter timeout después de 60 segundos al imprimir {file_path}: {e}")
+            return False
+        except FileNotFoundError as e:
+            logger.error(f"PDFtoPrinter.exe no encontrado o archivo PDF no existe: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error al imprimir usando PDFtoPrinter: {e}")
+            logger.error(f"Error inesperado al imprimir con PDFtoPrinter: {type(e).__name__}: {e}", exc_info=True)
             return False
 
 class AdobePrinter(BasePrinter):
@@ -246,16 +270,23 @@ class AdobePrinter(BasePrinter):
             # Verificaciones previas
             file_path = str(Path(file_path).resolve())
             if not os.path.exists(file_path):
-                logger.error(f"El archivo no existe: {file_path}")
+                logger.error(f"AdobePrinter: El archivo no existe: {file_path}")
                 return False
+            
+            file_size = os.path.getsize(file_path)
+            if file_size == 0:
+                logger.error(f"AdobePrinter: El archivo está vacío (0 bytes): {file_path}")
+                return False
+                
+            logger.debug(f"AdobePrinter: Archivo validado - {file_path} ({file_size} bytes)")
                 
             # Verificar que la impresora predeterminada esté configurada
             current_printer = win32print.GetDefaultPrinter()
             if not current_printer:
-                logger.error("No hay impresora predeterminada configurada")
+                logger.error("AdobePrinter: No hay impresora predeterminada configurada")
                 return False
                 
-            logger.debug(f"Impresora actual: {current_printer}")
+            logger.debug(f"AdobePrinter: Impresora actual: {current_printer}")
             
             # Pausa de 2 segundos antes de imprimir
             import time
@@ -271,23 +302,28 @@ class AdobePrinter(BasePrinter):
                 current_printer # Imprimir a la impresora especificada
             ]
             
-            logger.debug(f"Imprimiendo con Adobe Reader: {' '.join(command)}")
+            logger.debug(f"AdobePrinter: Ejecutando comando: {' '.join(command)}")
             
             # Ejecutar Adobe Reader de forma silenciosa en segundo plano
-            subprocess.Popen(
+            process = subprocess.Popen(
                 command,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
             )
             
-            logger.info(f"Archivo {file_path} enviado a imprimir usando Adobe Reader (proceso en segundo plano).")
+            logger.info(f"Archivo {file_path} enviado a imprimir usando Adobe Reader (PID: {process.pid}).")
             logger.warning("Los errores de impresión de Adobe Reader no se capturarán directamente en este modo.")
             return True
                 
+        except FileNotFoundError as e:
+            logger.error(f"AdobePrinter: Adobe Reader no encontrado o archivo no existe: {e}", exc_info=True)
+            return False
         except subprocess.CalledProcessError as e:
-            logger.error(f"Error al ejecutar Adobe Reader: {e}")
+            logger.error(f"AdobePrinter: Error al ejecutar Adobe Reader - ReturnCode: {e.returncode}", exc_info=True)
             return False
         except Exception as e:
-            logger.error(f"Error inesperado al imprimir usando Adobe Reader: {e}")
+            logger.error(f"AdobePrinter: Error inesperado - {type(e).__name__}: {e}", exc_info=True)
             return False
 
 class PrinterManager:
