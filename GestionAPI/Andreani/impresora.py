@@ -175,13 +175,36 @@ class PDFtoPrinterPrinter(BasePrinter):
 
             logger.debug(f"Imprimiendo con PDFtoPrinter: {' '.join(command)}")
 
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                timeout=60,  # Timeout de 60 segundos
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
+            # Configuración mejorada para manejar SmartScreen y timeouts
+            import time
+            max_attempts = 3
+            base_timeout = 30
+            
+            for attempt in range(max_attempts):
+                try:
+                    # Incrementar timeout en cada intento
+                    timeout = base_timeout * (attempt + 1)
+                    logger.debug(f"Intento {attempt + 1}/{max_attempts} con timeout de {timeout}s")
+                    
+                    result = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                    break  # Si llegamos aquí, el comando se ejecutó sin timeout
+                    
+                except subprocess.TimeoutExpired:
+                    if attempt < max_attempts - 1:
+                        logger.warning(f"Timeout en intento {attempt + 1}, reintentando...")
+                        time.sleep(2)  # Pausa entre intentos
+                        continue
+                    else:
+                        logger.error(f"PDFtoPrinter timeout después de {max_attempts} intentos")
+                        logger.error("POSIBLE CAUSA: Windows Defender SmartScreen bloqueando PDFtoPrinter")
+                        logger.error("SOLUCIÓN: Ejecutar configurar_defender.py como administrador")
+                        return False
 
             if result.returncode == 0:
                 logger.info(f"Archivo {file_path} enviado a imprimir usando PDFtoPrinter")
@@ -194,12 +217,15 @@ class PDFtoPrinterPrinter(BasePrinter):
                     error_msg += f"\nStdout: {result.stdout.strip()}"
                 if result.stderr:
                     error_msg += f"\nStderr: {result.stderr.strip()}"
+                    
+                # Detectar error específico de SmartScreen
+                if "no se reconoce" in result.stderr.lower() or "access denied" in result.stderr.lower():
+                    error_msg += "\n⚠️  POSIBLE BLOQUEO DE WINDOWS DEFENDER SMARTSCREEN"
+                    error_msg += "\n🔧 SOLUCIÓN: Ejecutar configurar_defender.py como administrador"
+                    
                 logger.error(error_msg)
                 return False
                 
-        except subprocess.TimeoutExpired as e:
-            logger.error(f"PDFtoPrinter timeout después de 60 segundos al imprimir {file_path}: {e}")
-            return False
         except FileNotFoundError as e:
             logger.error(f"PDFtoPrinter.exe no encontrado o archivo PDF no existe: {e}")
             return False

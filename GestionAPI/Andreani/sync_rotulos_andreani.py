@@ -221,6 +221,9 @@ async def process_orders_and_get_labels() -> None:
                     
                     # Imprimir la etiqueta
                     try:
+                        logger.info(f"Iniciando impresión de etiqueta - Pedido: {order_info['numeroPedido']}")
+                        logger.debug(f"Método: {printer_method}, Impresora: {printer_path}")
+                        
                         print_result = printer_manager.print_file(filepath)
                         
                         if print_result:
@@ -237,7 +240,8 @@ async def process_orders_and_get_labels() -> None:
                                 f"  - Tamano: {file_size} bytes\n"
                                 f"  - Metodo de impresion: {printer_method}\n"
                                 f"  - Impresora: {printer_path}\n"
-                                f"  - Verificar: Conectividad de red, estado de la impresora, permisos de archivo"
+                                f"  - Verificar: Conectividad de red, estado de la impresora, permisos de archivo\n"
+                                f"  - NOTA: Si el problema persiste, ejecutar diagnostico_impresion.py"
                             )
                     except Exception as print_error:
                         logger.error(
