@@ -49,7 +49,7 @@ class WeliveryDB:
             resultados = self.conexion.ejecutar_consulta(QRY_GET_PEDIDOS_PENDIENTES)
             
             if resultados:
-                logger.info(f"Se encontraron {len(resultados)} pedidos pendientes de envío")
+                logger.info(f"{len(resultados)} pedidos pendientes de envío")
                 return resultados
             else:
                 logger.info("No se encontraron pedidos pendientes de envío")
@@ -70,7 +70,7 @@ class WeliveryDB:
             resultados = self.conexion.ejecutar_consulta(QRY_GET_PEDIDOS_PENDIENTES_ENTREGA)
             
             if resultados:
-                logger.info(f"Se encontraron {len(resultados)} pedidos pendientes de entrega")
+                logger.info(f"{len(resultados)} pedidos pendientes de entrega")
                 return resultados
             else:
                 logger.info("No se encontraron pedidos pendientes de entrega")
@@ -100,7 +100,6 @@ class WeliveryDB:
             result = self.conexion.ejecutar_update(QRY_UPDATE_NUM_SEGUIMIENTO, params)
             
             if result:
-                logger.info(f"Número de seguimiento {num_seguimiento} actualizado para pedido {nro_pedido}")
                 return True
             else:
                 logger.warning(f"No se pudo actualizar número de seguimiento para pedido {nro_pedido}")
@@ -136,7 +135,6 @@ class WeliveryDB:
             result = self.conexion.ejecutar_update(QRY_UPDATE_ESTADO_ENVIO, params)
             
             if result:
-                logger.info(f"Estado {estado_texto} ({estado_id}) actualizado para pedido {nro_pedido}")
                 return True
             else:
                 logger.warning(f"No se pudo actualizar estado para pedido {nro_pedido}")
@@ -161,7 +159,6 @@ class WeliveryDB:
         try:
             # Verificar si el pedido existe en la tabla de ecommerce
             if not self._check_pedido_exists_in_ecommerce(nro_pedido, talon_ped):
-                logger.debug(f"Pedido {nro_pedido} no existe en RO_T_ESTADO_PEDIDOS_ECOMMERCE - no requiere actualización")
                 return False
             
             if fecha_entrega is None:
@@ -174,7 +171,6 @@ class WeliveryDB:
             result = self.conexion.ejecutar_update(QRY_UPDATE_ENTREGADO, params)
             
             if result:
-                logger.info(f"Pedido {nro_pedido} marcado como entregado en ecommerce")
                 return True
             else:
                 logger.warning(f"No se pudo marcar como entregado el pedido {nro_pedido}")
@@ -227,7 +223,6 @@ class WeliveryDB:
             resultados = self.conexion.ejecutar_consulta_con_parametros(QRY_GET_PEDIDO_BY_SEGUIMIENTO, params)
             
             if resultados and len(resultados) > 0:
-                logger.info(f"Pedido encontrado para seguimiento {num_seguimiento}")
                 return resultados[0]
             else:
                 logger.warning(f"No se encontró pedido para seguimiento {num_seguimiento}")
@@ -286,12 +281,8 @@ class WeliveryDB:
                         if self._check_pedido_exists_in_ecommerce(nro_pedido, talon_ped):
                             if self.update_entregado(nro_pedido, talon_ped, fecha_estado):
                                 stats['entregados'] += 1
-                                logger.info(f"Pedido {nro_pedido} marcado como entregado en ecommerce")
                             else:
                                 logger.warning(f"Error técnico al marcar como entregado: {nro_pedido}")
-                        else:
-                            logger.info(f"Pedido {nro_pedido} no requiere actualización en ecommerce (no existe en esa tabla)")
-                            # No contamos esto como error, es una situación normal
                 else:
                     stats['errores'] += 1
                     
@@ -306,7 +297,7 @@ class WeliveryDB:
         """Cierra la conexión a la base de datos."""
         try:
             if self.conexion:
-                # Aquí podrías agregar lógica para cerrar la conexión si tu clase Conexion lo soporta
-                logger.info("Conexión a base de datos cerrada")
+                # Aquí podrías agregar lógica para cerrar la conexión si tu clase Conexión lo soporta
+                pass
         except Exception as e:
             logger.error(f"Error al cerrar conexión: {e}")

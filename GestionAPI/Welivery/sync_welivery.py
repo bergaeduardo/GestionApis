@@ -65,7 +65,7 @@ class WeliverySync:
                 logger.info("No hay pedidos pendientes de envío")
                 return self.stats
             
-            logger.info(f"Se encontraron {len(pedidos)} pedidos pendientes de envío")
+            logger.info(f"Procesando {len(pedidos)} pedidos pendientes de envío")
             
             for pedido in pedidos:
                 nro_pedido, order_id_tienda, talon_ped = pedido
@@ -78,7 +78,6 @@ class WeliverySync:
                         # Actualizar número de seguimiento en la base de datos
                         if self.db.update_numero_seguimiento(str(nro_pedido), str(talon_ped), num_seguimiento):
                             self.stats['envios_creados'] += 1
-                            logger.info(f"Envío creado - Pedido: {nro_pedido}, Seguimiento: {num_seguimiento}")
                         else:
                             self.stats['errores'] += 1
                             logger.error(f"Error al crear envío para pedido {nro_pedido}")
@@ -115,7 +114,7 @@ class WeliverySync:
                 logger.info("No hay pedidos pendientes de actualización de estado")
                 return self.stats
             
-            logger.info(f"Se encontraron {len(pedidos)} pedidos para actualizar estado")
+            logger.info(f"Consultando estado de {len(pedidos)} pedidos en Welivery")
             
             # Extraer números de seguimiento
             tracking_numbers = [str(pedido[1]) for pedido in pedidos if pedido[1]]
@@ -123,8 +122,6 @@ class WeliverySync:
             if not tracking_numbers:
                 logger.warning("No hay números de seguimiento válidos")
                 return self.stats
-            
-            logger.info(f"Consultando estado de {len(tracking_numbers)} envíos en Welivery")
             
             # Consultar estados en lotes para mejor rendimiento
             status_results = await self.api.get_multiple_delivery_status(tracking_numbers)
@@ -154,8 +151,6 @@ class WeliverySync:
                             'estado_id': estado_id,
                             'fecha_estado': fecha_estado
                         })
-                        
-                        logger.debug(f"Preparando actualización - Pedido: {nro_pedido}, Estado: {status} ({estado_id})")
             
             # Procesar actualizaciones masivas
             if updates:

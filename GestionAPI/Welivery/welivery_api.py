@@ -62,18 +62,17 @@ class WeliveryAPI:
                 params=params
             ) as response:
                         
-                        logger.debug(f"Request to {url} with params: {params}")
-                        logger.debug(f"Response status: {response.status}")
-                        
                         if response.status == 200:
                             data = await response.json()
-                            logger.debug(f"Response data: {data}")
                             return data
                         elif response.status == 401:
                             logger.error("Error de autenticación: credenciales inválidas")
                             return None
                         elif response.status == 404:
-                            logger.warning(f"Número de seguimiento no encontrado: {params.get('Id', 'N/A')}")
+                            # No loguear, es normal que algunos envíos no existan
+                            return None
+                        elif response.status == 400:
+                            # No loguear, es normal que algunos envíos no tengan acceso
                             return None
                         else:
                             text = await response.text()
@@ -103,17 +102,12 @@ class WeliveryAPI:
         endpoint = ""
         params = {"Id": tracking_number}
         
-        logger.info(f"Consultando estado de envío para: {tracking_number}")
-        
         response = await self._make_request("GET", endpoint, params)
         
         if response and response.get("status") == "OK":
             data = response.get("data", {})
-            status = data.get("Status", "")
-            logger.info(f"Estado obtenido para {tracking_number}: {status}")
             return data
         else:
-            logger.warning(f"No se pudo obtener estado para {tracking_number}")
             return None
 
     async def get_multiple_delivery_status(self, tracking_numbers: list) -> Dict[str, Optional[Dict[str, Any]]]:
@@ -129,8 +123,6 @@ class WeliveryAPI:
         if not tracking_numbers:
             return {}
         
-        logger.info(f"Consultando estado para {len(tracking_numbers)} envíos")
-        
         # Crear tareas asíncronas para cada consulta
         tasks = []
         for tracking_number in tracking_numbers:
@@ -141,14 +133,16 @@ class WeliveryAPI:
         results = {}
         completed_tasks = await asyncio.gather(*[task for _, task in tasks], return_exceptions=True)
         
+        successful_count = 0
         for (tracking_number, _), result in zip(tasks, completed_tasks):
             if isinstance(result, Exception):
-                logger.error(f"Error al consultar {tracking_number}: {result}")
                 results[tracking_number] = None
             else:
                 results[tracking_number] = result
+                if result is not None:
+                    successful_count += 1
         
-        logger.info(f"Consultas completadas: {len([r for r in results.values() if r is not None])}/{len(tracking_numbers)} exitosas")
+        logger.info(f"Consultas API completadas: {successful_count}/{len(tracking_numbers)} exitosas")
         
         return results
 
@@ -192,7 +186,6 @@ class WeliveryAPI:
         try:
             if hasattr(self, '_session') and self._session and not self._session.closed:
                 await self._session.close()
-            logger.info("Cliente API de Welivery cerrado")
         except Exception as e:
             logger.error(f"Error cerrando cliente Welivery: {e}")
         finally:
