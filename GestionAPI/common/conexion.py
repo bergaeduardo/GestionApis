@@ -36,6 +36,34 @@ class Conexion:
                 cursor.close()
                 self.connection.close()
 
+    def ejecutar_consulta_con_parametros(self, sql, params=None):
+        """
+        Ejecuta una consulta SELECT con parámetros.
+        
+        Args:
+            sql (str): Consulta SQL
+            params (list): Lista de parámetros para la consulta
+            
+        Returns:
+            list: Resultados de la consulta o None si hay error
+        """
+        cursor = self.conectar()
+        if cursor:
+            try:
+                cursor.execute(sql, params if params else ())
+                resultados = cursor.fetchall()
+                self.connection.commit()
+                return resultados
+            except pyodbc.Error as e:
+                logger.error(f"Error al ejecutar la consulta con parámetros: {e}")
+                logger.error(f"SQL: {sql}")
+                logger.error(f"Parámetros: {params}")
+                return None
+            finally:
+                cursor.close()
+                self.connection.close()
+        return None
+
     def ejecutar_update(self, sql, params=None, max_retries=3):
         cursor = self.conectar()
         if cursor:
