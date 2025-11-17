@@ -1,9 +1,11 @@
 import asyncio
 import aiohttp
 import logging
+import os
 from typing import Optional, Dict, Any
 
-logger = logging.getLogger('welivery_api')
+# Usar el logger configurado por el módulo padre
+logger = logging.getLogger('welivery_sync')
 
 class WeliveryAPI:
     """

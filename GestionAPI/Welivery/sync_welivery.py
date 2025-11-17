@@ -15,8 +15,9 @@ from GestionAPI.Welivery.welivery_api import WeliveryAPI
 from GestionAPI.Welivery.db_operations_welivery import WeliveryDB
 
 
-# Configurar logger específico para Welivery
-logger = setup_logger('welivery_sync')
+# Configurar logger específico para Welivery con ruta absoluta
+welivery_log_path = os.path.join(os.path.dirname(__file__), 'logs', 'app.log')
+logger = setup_logger('welivery_sync', welivery_log_path)
 
 class WeliverySync:
     """
@@ -334,11 +335,6 @@ async def main():
         await asyncio.sleep(0.1)
 
 if __name__ == "__main__":
-    # Configurar logging para ejecución directa
-    import os
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
-    
     # Ejecutar con manejo limpio del event loop
     try:
         asyncio.run(main())

@@ -19,7 +19,8 @@ from consultas import (
     QRY_GET_PEDIDO_BY_SEGUIMIENTO
 )
 
-logger = logging.getLogger('welivery_db')
+# Usar el logger configurado por el módulo padre
+logger = logging.getLogger('welivery_sync')
 
 class WeliveryDB:
     """
