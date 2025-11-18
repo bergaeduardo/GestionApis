@@ -16,7 +16,9 @@ from consultas import (
     QRY_UPDATE_ESTADO_ENVIO,
     QRY_UPDATE_ENTREGADO,
     QRY_CHECK_PEDIDO_ECOMMERCE,
-    QRY_GET_PEDIDO_BY_SEGUIMIENTO
+    QRY_GET_PEDIDO_BY_SEGUIMIENTO,
+    QRY_GET_PEDIDOS_SIN_IMPRIMIR,
+    QRY_UPDATE_IMP_ROT
 )
 
 # Usar el logger configurado por el módulo padre
@@ -301,3 +303,54 @@ class WeliveryDB:
                 pass
         except Exception as e:
             logger.error(f"Error al cerrar conexión: {e}")
+
+    def get_pedidos_sin_imprimir(self) -> Optional[List[Tuple]]:
+        """
+        Obtiene pedidos pendientes de impresión de etiquetas.
+        Busca pedidos con número de seguimiento que aún no han sido marcados como impresos.
+        
+        Returns:
+            List[Tuple]: Lista de tuplas con (NRO_PEDIDO, NUM_SEGUIMIENTO, TALON_PED)
+        """
+        try:
+            resultados = self.conexion.ejecutar_consulta(QRY_GET_PEDIDOS_SIN_IMPRIMIR)
+            
+            if resultados:
+                logger.info(f"{len(resultados)} pedidos pendientes de impresión de etiquetas")
+                return resultados
+            else:
+                logger.info("No se encontraron pedidos pendientes de impresión")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Error al obtener pedidos sin imprimir: {e}")
+            return None
+
+    def update_imp_rot(self, nro_pedido: str, talon_ped: str = '99') -> bool:
+        """
+        Actualiza el campo IMP_ROT para marcar que la etiqueta fue impresa.
+        
+        Args:
+            nro_pedido (str): Número de pedido
+            talon_ped (str): Talón del pedido (por defecto '99')
+            
+        Returns:
+            bool: True si la actualización fue exitosa
+        """
+        try:
+            # Agregar espacio al inicio del número de pedido para evitar errores de SQL Server
+            nro_pedido_formatted = f" {nro_pedido.strip()}"
+            
+            params = [nro_pedido_formatted, talon_ped]
+            result = self.conexion.ejecutar_update(QRY_UPDATE_IMP_ROT, params)
+            
+            if result:
+                logger.info(f"Etiqueta marcada como impresa para pedido {nro_pedido}")
+                return True
+            else:
+                logger.warning(f"No se pudo actualizar IMP_ROT para pedido {nro_pedido}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error al actualizar IMP_ROT para pedido {nro_pedido}: {e}")
+            return False

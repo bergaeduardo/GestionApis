@@ -6,6 +6,7 @@ Sistema de integración con la API de Welivery para automatizar la gestión de e
 
 ### Funcionalidades principales:
 - 🔄 Sincronización automática de estados de envío
+- 🖨️ Descarga e impresión automática de etiquetas de envío
 - 📊 Consultas masivas optimizadas 
 - 🛡️ Manejo robusto de errores
 - 📝 Logging detallado para auditoría
@@ -68,12 +69,57 @@ asyncio.run(main())
 # Ejecutar sincronización completa
 python sync_welivery.py
 
-# Ejecutar pruebas
+# Ejecutar impresión de etiquetas
+python sync_etiquetas_welivery.py
+
+# Ejecutar pruebas de sincronización
 python test_welivery.py
 
-# Ver logs
+# Ejecutar pruebas de impresión
+python test_etiquetas.py
+
+# Ver logs de sincronización
 tail -f logs/welivery.log
+
+# Ver logs de impresión
+tail -f logs/welivery_etiquetas.log
 ```
+
+## 🖨️ Módulo de Impresión de Etiquetas
+
+### Descripción
+Sistema automatizado para descargar e imprimir etiquetas de envío desde Welivery.
+
+### Características
+- Descarga automática de etiquetas en formato PDF
+- Múltiples métodos de impresión (PDFtoPrinter, Adobe, Win32, GhostScript)
+- Control de estado de impresión en base de datos
+- Gestión de archivos temporales
+
+### Configuración rápida
+
+1. **Configurar impresora** en `config/printer_config.json`:
+```json
+{
+    "printer": {
+        "method": "pdftoprinter",
+        "label_printer_path": "\\\\PC-PEDIDOS-02\\ZDesigner GC420t (EPL)",
+        "copies": 1
+    }
+}
+```
+
+2. **Ejecutar impresión**:
+```bash
+python sync_etiquetas_welivery.py
+```
+
+### Documentación completa
+Ver [README_IMPRESION.md](README_IMPRESION.md) para información detallada sobre:
+- Configuración de impresoras
+- Métodos de impresión disponibles
+- Solución de problemas
+- API de Welivery para etiquetas
 
 
 
