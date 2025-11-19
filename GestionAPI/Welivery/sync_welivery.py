@@ -14,6 +14,14 @@ from GestionAPI.common.credenciales import WELIVERY
 from GestionAPI.Welivery.welivery_api import WeliveryAPI
 from GestionAPI.Welivery.db_operations_welivery import WeliveryDB
 
+# Importar módulo de impresión de etiquetas
+try:
+    from GestionAPI.Welivery.sync_etiquetas_welivery import process_and_print_labels
+    PRINT_ENABLED = True
+except ImportError as e:
+    logger_temp = logging.getLogger('welivery_sync')
+    logger_temp.warning(f"No se pudo importar módulo de impresión de etiquetas: {e}")
+    PRINT_ENABLED = False
 
 # Configurar logger específico para Welivery con ruta absoluta
 welivery_log_path = os.path.join(os.path.dirname(__file__), 'logs', 'app.log')
@@ -78,6 +86,7 @@ class WeliverySync:
                         # Actualizar número de seguimiento en la base de datos
                         if self.db.update_numero_seguimiento(str(nro_pedido), str(talon_ped), num_seguimiento):
                             self.stats['envios_creados'] += 1
+                            logger.info(f"Envío creado exitosamente para pedido {nro_pedido} - NUM_SEGUIMIENTO: {num_seguimiento}")
                         else:
                             self.stats['errores'] += 1
                             logger.error(f"Error al crear envío para pedido {nro_pedido}")
@@ -224,6 +233,20 @@ class WeliverySync:
             # Agregar estadísticas
             for key in total_stats:
                 total_stats[key] += stats1.get(key, 0)
+            
+            # Paso 1.5: Imprimir etiquetas de los envíos recién creados
+            if stats1.get('envios_creados', 0) > 0 and PRINT_ENABLED:
+                logger.info("Paso 1.5: Imprimiendo etiquetas de envíos recién creados...")
+                try:
+                    await process_and_print_labels()
+                    logger.info("Proceso de impresión de etiquetas completado")
+                except Exception as e:
+                    logger.error(f"Error durante la impresión de etiquetas: {e}")
+                    total_stats['errores'] += 1
+            elif not PRINT_ENABLED:
+                logger.warning("Módulo de impresión no disponible, saltando impresión de etiquetas")
+            else:
+                logger.info("No hay etiquetas nuevas para imprimir")
             
             # Breve pausa entre operaciones
             await asyncio.sleep(2)
