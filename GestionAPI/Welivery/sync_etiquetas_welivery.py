@@ -95,7 +95,7 @@ async def process_and_print_labels() -> None:
             except Exception as e:
                 logger.error(f"Error al cargar printer_config.json: {e}")
 
-        printer_method = printer_config.get('method', 'win32')
+        printer_method = printer_config.get('method', 'pdftoprinter')
         printer_path = printer_config.get('label_printer_path', '\\\\PC-PEDIDOS-02\\ZDesigner GC420t (EPL)')
         
         os.environ['PRINTER_METHOD'] = printer_method
