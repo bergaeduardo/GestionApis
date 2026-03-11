@@ -13,7 +13,10 @@ from GestionAPI.Andreani.consultas import (
     QRY_GET_DATA_FROM_SUC,
     QRY_UPDATE_NUM_SEGUIMIENTO_SUC,
     QRY_UPDATE_IMP_ROT_SUC,
-    QRY_GET_PEDIDOS_SIN_IMPRIMIR_SUC
+    QRY_GET_PEDIDOS_SIN_IMPRIMIR_SUC,
+    QRY_GET_ENVIOS_PENDIENTES_SUC,
+    QRY_UPDATE_ESTADO_ENVIO_SUC,
+    QRY_GET_PEDIDO_BY_SEGUIMIENTO_SUC
 )
 
 logger = logging.getLogger('andreani_rotulos')
@@ -275,3 +278,64 @@ class AndreaniSucDB:
         except Exception as e:
             logger.error(f"Error al obtener pedidos pendientes desde sucursal: {e}")
             return []
+
+    def get_envios_pendientes(self):
+        """Obtiene los envíos con IMP_ROT=1 y estado de envío pendiente en EB_ENVIOS_WEB_DESDE_SUC."""
+        try:
+            resultados = self.conexion.ejecutar_consulta(QRY_GET_ENVIOS_PENDIENTES_SUC)
+            if resultados:
+                logger.info(f"Se encontraron {len(resultados)} envíos desde sucursal pendientes de actualización.")
+                return resultados
+            else:
+                logger.info("No se encontraron envíos desde sucursal pendientes de actualización.")
+                return []
+        except Exception as e:
+            logger.error(f"Error al obtener envíos pendientes desde sucursal: {e}")
+            return []
+
+    def update_estado_envio(self, num_seguimiento, estado, estado_id, fecha_estado):
+        """Actualiza el estado del envío en la tabla EB_ENVIOS_WEB_DESDE_SUC."""
+        try:
+            from datetime import datetime
+            if isinstance(fecha_estado, str):
+                try:
+                    fecha_dt = datetime.fromisoformat(fecha_estado.replace('Z', '+00:00'))
+                    fecha_formateada = fecha_dt.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    fecha_formateada = fecha_estado
+                    logger.warning(f"No se pudo convertir la fecha, usando valor original: {fecha_estado}")
+            else:
+                fecha_formateada = fecha_estado
+
+            if self.conexion.ejecutar_update(
+                QRY_UPDATE_ESTADO_ENVIO_SUC, (estado, estado_id, fecha_formateada, num_seguimiento)
+            ):
+                logger.info(f"Estado del envío actualizado para el seguimiento {num_seguimiento}.")
+                return True
+            else:
+                logger.error(f"Fallo al actualizar el estado del envío para el seguimiento {num_seguimiento}.")
+                return False
+        except Exception as e:
+            logger.error(f"Error al actualizar el estado del envío para el seguimiento {num_seguimiento}: {e}")
+            return False
+
+    def get_pedido_by_seguimiento(self, num_seguimiento):
+        """Obtiene el número de pedido y TALON_PED a partir del número de seguimiento en EB_ENVIOS_WEB_DESDE_SUC."""
+        try:
+            resultados = self.conexion.ejecutar_consulta(
+                QRY_GET_PEDIDO_BY_SEGUIMIENTO_SUC.replace('?', f"'{num_seguimiento}'")
+            )
+            if resultados and len(resultados) > 0:
+                nro_pedido = resultados[0][0]
+                talon_ped = resultados[0][1] if len(resultados[0]) > 1 else None
+                logger.info(
+                    f"Datos encontrados — Pedido: {nro_pedido}, Talon: {talon_ped} "
+                    f"para seguimiento {num_seguimiento}"
+                )
+                return (nro_pedido, talon_ped)
+            else:
+                logger.warning(f"No se encontró información para el seguimiento {num_seguimiento}")
+                return (None, None)
+        except Exception as e:
+            logger.error(f"Error al obtener información para el seguimiento {num_seguimiento}: {e}")
+            return (None, None)
