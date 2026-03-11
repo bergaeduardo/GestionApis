@@ -149,3 +149,130 @@ SELECT NRO_PEDIDO, TALON_PED
 FROM SEIN_TABLA_TEMPORAL_SCRIPT
 WHERE NUM_SEGUIMIENTO = ?
 """
+
+# ---------------------------------------------------------------------------
+# Consultas para pedidos entregados desde el punto de venta (sucursal)
+# Tabla: EB_ENVIOS_WEB_DESDE_SUC
+# ---------------------------------------------------------------------------
+
+QRY_GET_DATA_FROM_SUC = """
+SELECT CAST((
+SELECT 
+    '400007367' AS contrato,
+    LTRIM(RTRIM(T_OUTER.NRO_PEDIDO)) AS idPedido,
+    0 AS valorACobrar,
+    JSON_QUERY((
+        SELECT
+            '1644' AS codigoPostal,
+            'Uruguay' AS calle,
+            '4415' AS numero,
+            'Béccar' AS localidad,
+            '' AS region,
+            'Argentina' AS pais,
+            JSON_QUERY('[{"meta": "", "contenido": ""}]') AS componentesDeDireccion
+        FOR JSON PATH, ROOT('postal')
+    )) AS origen,
+	JSON_QUERY((
+		SELECT
+			LTRIM(RTRIM(T_OUTER.CODIGO_POSTAL_ENTREGA)) AS codigoPostal,
+			-- Calle: todo antes del último espacio
+			CASE 
+				WHEN CHARINDEX(' ', REVERSE(LTRIM(RTRIM(T_OUTER.DIRECCION_ENTREGA)))) > 0
+				THEN LEFT(
+						LTRIM(RTRIM(T_OUTER.DIRECCION_ENTREGA)),
+						LEN(LTRIM(RTRIM(T_OUTER.DIRECCION_ENTREGA))) 
+						- CHARINDEX(' ', REVERSE(LTRIM(RTRIM(T_OUTER.DIRECCION_ENTREGA))))
+					 )
+				ELSE '' -- o la dirección completa si no hay espacio
+			END AS calle,
+			-- Número: todo después del último espacio
+			CASE 
+				WHEN CHARINDEX(' ', REVERSE(LTRIM(RTRIM(T_OUTER.DIRECCION_ENTREGA)))) > 0
+				THEN RIGHT(
+						LTRIM(RTRIM(T_OUTER.DIRECCION_ENTREGA)),
+						CHARINDEX(' ', REVERSE(LTRIM(RTRIM(T_OUTER.DIRECCION_ENTREGA)))) - 1
+					 )
+				ELSE LTRIM(RTRIM(T_OUTER.DIRECCION_ENTREGA)) -- toda la dirección si no hay espacio
+			END AS numero,
+			LTRIM(RTRIM(T_OUTER.LOCALIDAD_ENTREGA)) AS localidad,
+			LTRIM(RTRIM(T_OUTER.PROVINCIA)) AS region,
+			'Argentina' AS pais,
+			JSON_QUERY('[{"meta": "", "contenido": ""}, {"meta": "", "contenido": ""}]') AS componentesDeDireccion
+		FOR JSON PATH, ROOT('postal')
+	)) AS destino,
+    JSON_QUERY((
+        SELECT
+            'Lakers Corp' AS nombreCompleto,
+            'xlshop@xl.com.ar' AS email,
+            'DNI' AS documentoTipo,
+            '41322399' AS documentoNumero,
+            JSON_QUERY('[{"tipo": 1, "numero": "153715896"}]') AS telefonos
+        FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+    )) AS remitente,
+    JSON_QUERY((
+        SELECT
+            T1.NOMBRE_CLIENTE AS nombreCompleto,
+            T1.E_MAIL AS email,
+            'CUIT' AS documentoTipo,
+            T1.N_CUIT AS documentoNumero,
+            JSON_QUERY(
+                (
+                    SELECT
+                        2 AS tipo,
+                        LTRIM(RTRIM(T1.TELEFONO1_ENTREGA)) AS numero
+                    FOR JSON PATH
+                )
+            ) AS telefonos
+        FROM
+            EB_ENVIOS_WEB_DESDE_SUC AS T1
+        WHERE
+            T1.NRO_PEDIDO = T_OUTER.NRO_PEDIDO
+        FOR JSON PATH
+    )) AS destinatario,
+    JSON_QUERY((
+    SELECT 2 AS kilos,
+           5000 AS volumenCm,
+           0 AS valorDeclaradoSinImpuestos,
+           0 AS valorDeclaradoConImpuestos,
+           JSON_QUERY((
+               SELECT [meta], [contenido]
+               FROM (
+                   SELECT 'detalle' AS [meta], '' AS [contenido]
+                   UNION ALL
+                   SELECT 'idCliente' AS [meta], LTRIM(RTRIM(T_OUTER.NRO_COMPROBANTE)) AS [contenido]
+                   UNION ALL
+                   SELECT 'observaciones' AS [meta], '' AS [contenido]
+               ) AS ReferenciasSub
+               FOR JSON PATH
+           )) AS referencias
+    FOR JSON PATH
+	)) AS bultos
+FROM
+    EB_ENVIOS_WEB_DESDE_SUC AS T_OUTER
+WHERE
+    (T_OUTER.IMP_ROT = 0 OR T_OUTER.IMP_ROT IS NULL)
+    AND T_OUTER.NUM_SEGUIMIENTO IS NULL
+    AND T_OUTER.TALON_PED IN('80','99','102')
+    AND T_OUTER.METODO_ENVIO = 'DOMICILIO'
+    AND T_OUTER.NRO_COMPROBANTE != 'SIN-COMPROB'
+FOR JSON PATH, ROOT('data')
+) AS NTEXT);
+"""
+
+QRY_UPDATE_NUM_SEGUIMIENTO_SUC = """
+UPDATE EB_ENVIOS_WEB_DESDE_SUC SET NUM_SEGUIMIENTO = ? WHERE NRO_PEDIDO = ? AND NUM_SEGUIMIENTO IS NULL
+"""
+
+QRY_UPDATE_IMP_ROT_SUC = """
+UPDATE EB_ENVIOS_WEB_DESDE_SUC SET IMP_ROT = 1 WHERE NRO_PEDIDO = ? AND NUM_SEGUIMIENTO IS NOT NULL
+"""
+
+QRY_GET_PEDIDOS_SIN_IMPRIMIR_SUC = """
+SELECT NRO_PEDIDO, NUM_SEGUIMIENTO
+FROM EB_ENVIOS_WEB_DESDE_SUC
+WHERE NUM_SEGUIMIENTO IS NOT NULL 
+  AND (IMP_ROT = 0 OR IMP_ROT IS NULL)
+  AND TALON_PED IN('80','99','102')
+  AND METODO_ENVIO = 'DOMICILIO'
+  AND NRO_COMPROBANTE != 'SIN-COMPROB'
+"""

@@ -9,7 +9,11 @@ from GestionAPI.Andreani.consultas import (
     QRY_GET_ENVIOS_PENDIENTES, 
     QRY_UPDATE_ESTADO_ENVIO, 
     QRY_UPDATE_ENTREGADO,
-    QRY_GET_PEDIDO_BY_SEGUIMIENTO
+    QRY_GET_PEDIDO_BY_SEGUIMIENTO,
+    QRY_GET_DATA_FROM_SUC,
+    QRY_UPDATE_NUM_SEGUIMIENTO_SUC,
+    QRY_UPDATE_IMP_ROT_SUC,
+    QRY_GET_PEDIDOS_SIN_IMPRIMIR_SUC
 )
 
 logger = logging.getLogger('andreani_rotulos')
@@ -200,3 +204,74 @@ class AndreaniDB:
         except Exception as e:
             logger.error(f"Error al obtener información para el seguimiento {num_seguimiento}: {e}")
             return (None, None)
+
+
+class AndreaniSucDB:
+    """Operaciones de base de datos para pedidos entregados desde sucursal.
+    Trabaja sobre la tabla EB_ENVIOS_WEB_DESDE_SUC.
+    """
+
+    def __init__(self):
+        self.db_config = CENTRAL_LAKERS
+        self.conexion = Conexion(
+            server=self.db_config['server'],
+            database=self.db_config['database'],
+            user=self.db_config['user'],
+            password=self.db_config['password']
+        )
+
+    def get_data_from_suc(self):
+        """Obtiene los datos de la tabla EB_ENVIOS_WEB_DESDE_SUC."""
+        try:
+            resultados = self.conexion.ejecutar_consulta(QRY_GET_DATA_FROM_SUC)
+            if resultados:
+                logger.info("Datos obtenidos correctamente desde EB_ENVIOS_WEB_DESDE_SUC.")
+                return resultados
+            else:
+                logger.info("No se encontraron datos en EB_ENVIOS_WEB_DESDE_SUC.")
+                return None
+        except Exception as e:
+            logger.error(f"Error al obtener datos de EB_ENVIOS_WEB_DESDE_SUC: {e}")
+            return None
+
+    def update_num_seguimiento(self, nro_pedido, numero_envio):
+        """Actualiza NUM_SEGUIMIENTO para un pedido en EB_ENVIOS_WEB_DESDE_SUC."""
+        nro_pedido = f" {nro_pedido}"
+        try:
+            if self.conexion.ejecutar_update(QRY_UPDATE_NUM_SEGUIMIENTO_SUC, (numero_envio, nro_pedido)):
+                logger.info(f"NUM_SEGUIMIENTO actualizado para el pedido {nro_pedido}: {numero_envio}")
+                return True
+            else:
+                logger.error(f"Fallo al ejecutar el update de NUM_SEGUIMIENTO para el pedido {nro_pedido}.")
+                return False
+        except Exception as e:
+            logger.error(f"Error al actualizar NUM_SEGUIMIENTO para el pedido {nro_pedido}: {e}")
+            return False
+
+    def update_imp_rot(self, nro_pedido):
+        """Actualiza IMP_ROT = 1 para un pedido en EB_ENVIOS_WEB_DESDE_SUC."""
+        nro_pedido = f" {nro_pedido}"
+        try:
+            if self.conexion.ejecutar_update(QRY_UPDATE_IMP_ROT_SUC, (nro_pedido,)):
+                logger.info(f"IMP_ROT actualizado para el pedido {nro_pedido}.")
+                return True
+            else:
+                logger.error(f"Fallo al ejecutar el update de IMP_ROT para el pedido {nro_pedido}.")
+                return False
+        except Exception as e:
+            logger.error(f"Error al actualizar IMP_ROT para el pedido {nro_pedido}: {e}")
+            return False
+
+    def get_pedidos_sin_imprimir(self):
+        """Obtiene pedidos con NUM_SEGUIMIENTO pero (IMP_ROT = 0 o IS NULL) en EB_ENVIOS_WEB_DESDE_SUC."""
+        try:
+            resultados = self.conexion.ejecutar_consulta(QRY_GET_PEDIDOS_SIN_IMPRIMIR_SUC)
+            if resultados:
+                logger.info(f"Se encontraron {len(resultados)} pedidos desde sucursal pendientes de etiqueta.")
+                return resultados
+            else:
+                logger.debug("No se encontraron pedidos desde sucursal pendientes de etiqueta.")
+                return []
+        except Exception as e:
+            logger.error(f"Error al obtener pedidos pendientes desde sucursal: {e}")
+            return []
