@@ -65,7 +65,7 @@ qry_ventasDetalle =  '''
 
 
  	WHERE 
-	CTA03.FECHA_MOV >= DATEADD(DAY, -5, GETDATE()) and
+	CTA03.FECHA_MOV >= DATEADD(DAY, -20, GETDATE()) and
  	CTA03.Cod_Articu NOT IN ('Art. Ajuste') AND (CTA03.Cod_Articu <> '') AND CTA02.T_COMP <> 'REC'
  	AND ((isnull(CTA03.RENGL_PADR,0) = 0) OR (isnull(CTA03.INSUMO_KIT_SEPARADO,0) = 1)) AND CTA02.Nro_Sucurs IN ( '10' )
 	--AND CTA02.N_COMP = @NCOMP

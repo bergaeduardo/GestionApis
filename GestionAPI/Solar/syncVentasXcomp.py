@@ -1,3 +1,11 @@
+import sys
+import os
+
+# Obtiene la ruta del directorio padre (la raíz del proyecto)
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+# Añade la ruta de la raíz del proyecto a sys.path
+sys.path.insert(0, project_root)
+
 from GestionAPI.common.conexion import Conexion
 from GestionAPI.common.credenciales import LOCALES_LAKERS
 from GestionAPI.Solar import Apis
@@ -42,22 +50,51 @@ else:
             for registro in DetalleVentas:
                 if registro['Comprobante'] == detalle['Comprobante']:
                     comprobante_encontrado = True
+                    
+                    # Validar datos antes de agregar
+                    cantidad = detalle.get('Detalle.Cantidad', 0) or 0
+                    importe = detalle.get('Detalle.Importe', 0) or 0
+                    iva = detalle.get('Detalle.IVA', 0) or 0
+                    
+                    # Filtrar items con ImporteNeto = 0 para evitar error 422
+                    if importe <= 0:
+                        print(f"ADVERTENCIA: Item filtrado por ImporteNeto = {importe} - Comprobante: {detalle.get('Comprobante')}")
+                        continue
+                    
+                    # Log para debug si hay otros problemas
+                    if not cantidad:
+                        print(f"ADVERTENCIA: Cantidad = 0 pero ImporteNeto válido - Cantidad: {cantidad}, Importe: {importe}, Comprobante: {detalle.get('Comprobante')}")
+                    
                     registro['Detalle'].append({
-                        "DescripcionItem": detalle['Detalle.CodArticulo'],
-                        "Cantidad": str(detalle['Detalle.Cantidad']),
-                        "ImporteNeto": str(detalle['Detalle.Importe']),
-                        "ImporteImpuestos": str(detalle['Detalle.IVA'])
+                        "DescripcionItem": detalle.get('Detalle.CodArticulo', ''),
+                        "Cantidad": str(cantidad),
+                        "ImporteNeto": str(importe),
+                        "ImporteImpuestos": str(iva)
                     })
                     break
 
             if not comprobante_encontrado:
+                # Validar datos antes de crear nuevo registro
+                cantidad = detalle.get('Detalle.Cantidad', 0) or 0
+                importe = detalle.get('Detalle.Importe', 0) or 0
+                iva = detalle.get('Detalle.IVA', 0) or 0
+                
+                # Filtrar items con ImporteNeto = 0 para evitar error 422
+                if importe <= 0:
+                    print(f"ADVERTENCIA: Item filtrado por ImporteNeto = {importe} - Comprobante: {detalle.get('Comprobante')}")
+                    continue
+                
+                # Log para debug si hay otros problemas
+                if not cantidad:
+                    print(f"ADVERTENCIA: Cantidad = 0 pero ImporteNeto válido - Cantidad: {cantidad}, Importe: {importe}, Comprobante: {detalle.get('Comprobante')}")
+                
                 DetalleVentas.append({
                     'Comprobante': detalle['Comprobante'],
                     'Detalle': [{
-                        "DescripcionItem": detalle['Detalle.CodArticulo'],
-                        "Cantidad": str(detalle['Detalle.Cantidad']),
-                        "ImporteNeto": str(detalle['Detalle.Importe']),
-                        "ImporteImpuestos": str(detalle['Detalle.IVA'])
+                        "DescripcionItem": detalle.get('Detalle.CodArticulo', ''),
+                        "Cantidad": str(cantidad),
+                        "ImporteNeto": str(importe),
+                        "ImporteImpuestos": str(iva)
                     }]
                 })
 
@@ -88,6 +125,28 @@ else:
             detalle_variable = next((item["Detalle"] for item in DetalleVentas if item["Comprobante"] == comprobante_buscar), None) 
             # print(detalle_variable)
             
+            # Calcular Importe dinámicamente como suma de ImporteNeto + ImporteImpuestos
+            # Solo si el comprobante tiene detalles válidos (ImporteNeto > 0)
+            importe_calculado = 0.0
+            detalle_valido = False
+            
+            if detalle_variable and len(detalle_variable) > 0:
+                for detalle_item in detalle_variable:
+                    importe_neto = float(detalle_item.get('ImporteNeto', 0) or 0)
+                    importe_impuestos = float(detalle_item.get('ImporteImpuestos', 0) or 0)
+                    if importe_neto > 0:  # Solo procesar items con ImporteNeto válido
+                        importe_calculado += importe_neto + importe_impuestos
+                        detalle_valido = True
+                
+                if detalle_valido:
+                    print(f"Comprobante {comprobante_buscar}: Importe calculado = {importe_calculado}")
+                else:
+                    print(f"ADVERTENCIA: Comprobante {comprobante_buscar}: Sin detalles válidos - se omitirá")
+                    continue  # Saltar este comprobante si no tiene detalles válidos
+            else:
+                print(f"ADVERTENCIA: No se encontraron detalles para comprobante {comprobante_buscar}")
+                continue  # Saltar este comprobante si no tiene detalles
+            
             registro = {
                 "Fecha": EncVentas['Fecha'],
                 "Hora": EncVentas['Hora'],
@@ -97,7 +156,7 @@ else:
                 "Detalles": detalle_variable,
                 "Pagos": [{ 
                     "MedioPago": EncVentas['MedioPago'], 
-                    "Importe": str(EncVentas['Importe'])
+                    "Importe": str(round(importe_calculado, 2))
                 }]
             }
             
