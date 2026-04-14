@@ -11,13 +11,15 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 from GestionAPI.Andreani.andreani_api import AndreaniAPI
 from GestionAPI.common.credenciales import DATA_PROD
 from GestionAPI.Andreani.db_operations_andreani import AndreaniDB
+from GestionAPI.common.logger_config import setup_logger
 
-# Configurar logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger('consultar_estado')
+# Configurar logging con archivo
+log_dir = os.path.join(os.path.dirname(__file__), 'logs')
+log_file = os.path.join(log_dir, f'consultar_estado_{datetime.now().strftime("%Y%m%d")}.log')
+logger = setup_logger('consultar_estado', log_file, 'INFO')
+
+# Configurar también el logger de andreani_api para que use el mismo archivo
+api_logger = setup_logger('andreani_api', log_file, 'INFO')
 
 async def consultar_estado_envio_api(numero_envio: str):
     """
@@ -35,7 +37,6 @@ async def consultar_estado_envio_api(numero_envio: str):
         password=DATA_PROD["passw"]
     )
     try:
-        logger.info(f"Consultando API de Andreani para el envío: {numero_envio}")
         estado_envio = await api.consultar_estado_envio(numero_envio)
 
         if estado_envio:
@@ -45,8 +46,11 @@ async def consultar_estado_envio_api(numero_envio: str):
                 "estadoId": estado_envio.get("estadoId"),
                 "fechaEstado": estado_envio.get("fechaEstado")
             }
+        else:
+            logger.warning(f"No se obtuvo respuesta de la API para el envío {numero_envio}")
+            return None
     except Exception as e:
-        logger.error(f"Ocurrió un error al consultar el estado del envío: {e}")
+        logger.error(f"Error al consultar estado del envío {numero_envio}: {e}")
         return None
 
 async def actualizar_estados_envios():

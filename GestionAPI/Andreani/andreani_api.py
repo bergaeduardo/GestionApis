@@ -1,7 +1,10 @@
 import asyncio
 import aiohttp
+import logging
 from requests.auth import HTTPBasicAuth
 
+# Configurar logger para la API
+logger = logging.getLogger('andreani_api')
 
 class AndreaniAPI:
     def __init__(self, base_url, user, password):
@@ -29,7 +32,7 @@ class AndreaniAPI:
                     return self.token
                 else:
                     text = await response.text()
-                    print(f"Error {response.status}: {text}")
+                    logger.error(f"Error al obtener token: {response.status} - {text}")
                     return None
 
     async def _make_request(self, method, url, headers=None, params=None, json_data=None):
@@ -49,7 +52,7 @@ class AndreaniAPI:
                 ) as response:
                     if response.status >= 400:
                         error_body = await response.text()
-                        print(f"Error en la solicitud a {url}: {response.status} {response.reason}. Respuesta: {error_body}")
+                        logger.error(f"Error en solicitud a {url}: {response.status} {response.reason} - {error_body}")
                         return None
 
                     if response.status == 204:
@@ -61,10 +64,10 @@ class AndreaniAPI:
                     else:
                         return await response.read()
         except aiohttp.ClientError as e:
-            print(f"Error de cliente AIOHTTP al intentar conectar a {url}: {e}")
+            logger.error(f"Error de conexión a {url}: {e}")
             return None
         except Exception as e:
-            print(f"Error no manejado en _make_request para {url}: {e}")
+            logger.error(f"Error no manejado en solicitud a {url}: {e}")
             return None
 
 
