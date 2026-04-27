@@ -233,13 +233,8 @@ class MercadoPagoAPIClient:
             "begin_date": begin_date,
             "end_date": end_date,
         }
-        logger.info(f"Creando reporte de liquidaciones: {begin_date} → {end_date}")
+        logger.debug(f"Creando reporte de liquidaciones: {begin_date} → {end_date}")
         respuesta = await self._post("/v1/account/release_report", payload)
-        if respuesta:
-            logger.info(
-                f"Reporte creado. file_name='{respuesta.get('file_name')}' "
-                f"status='{respuesta.get('status')}'"
-            )
         return respuesta
 
     async def obtener_lista_reportes(self) -> List[Dict[str, Any]]:
@@ -273,10 +268,6 @@ class MercadoPagoAPIClient:
         Returns:
             str: file_name del reporte nuevo cuando esté disponible, o None si se superó el tiempo.
         """
-        logger.info(
-            f"Esperando reporte nuevo en la lista "
-            f"(IDs previos conocidos: {len(ids_previos)})..."
-        )
         transcurrido = 0
         while transcurrido < max_espera_seg:
             lista = await self.obtener_lista_reportes()
@@ -285,21 +276,17 @@ class MercadoPagoAPIClient:
                 file_name = reporte.get("file_name")
                 # Buscar un reporte cuyo id NO existía antes de la creación y ya tiene file_name
                 if report_id not in ids_previos and file_name:
-                    logger.info(
-                        f"Reporte nuevo disponible. file_name='{file_name}' "
-                        f"id={report_id} status={reporte.get('status')}"
-                    )
+                    logger.info(f"Reporte disponible: {file_name}")
                     return file_name
 
-            logger.info(
-                f"Reporte nuevo aún no disponible. Esperando {intervalo_seg}s... "
-                f"({transcurrido}/{max_espera_seg}s)"
+            logger.debug(
+                f"Reporte aún no disponible. ({transcurrido}/{max_espera_seg}s)"
             )
             await asyncio.sleep(intervalo_seg)
             transcurrido += intervalo_seg
 
         logger.error(
-            f"El reporte nuevo no estuvo disponible en {max_espera_seg} segundos."
+            f"El reporte no estuvo disponible en {max_espera_seg} segundos."
         )
         return None
 
@@ -313,7 +300,7 @@ class MercadoPagoAPIClient:
         Returns:
             bytes: Contenido del CSV o None en caso de error.
         """
-        logger.info(f"Descargando reporte: {file_name}")
+        logger.debug(f"Descargando reporte: {file_name}")
         # El endpoint de descarga devuelve el CSV directamente (no JSON)
         session = await self._get_session()
         url = f"{MP_BASE_URL}/v1/account/release_report/{file_name}"
@@ -321,8 +308,8 @@ class MercadoPagoAPIClient:
             async with session.get(url) as response:
                 if response.status == 200:
                     contenido = await response.read()
-                    logger.info(
-                        f"Reporte descargado exitosamente. Tamaño: {len(contenido)} bytes."
+                    logger.debug(
+                        f"Reporte descargado. Tamaño: {len(contenido)} bytes."
                     )
                     return contenido
                 if response.status == 401:

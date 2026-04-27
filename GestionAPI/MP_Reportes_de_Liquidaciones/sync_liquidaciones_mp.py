@@ -159,7 +159,7 @@ def _guardar_csv_temporal(contenido: bytes, file_name: str) -> str:
     ruta = os.path.join(TEMP_DIR, file_name)
     with open(ruta, "wb") as f:
         f.write(contenido)
-    logger.info(f"CSV temporal guardado en: {ruta}")
+    logger.debug(f"CSV temporal guardado en: {ruta}")
     return ruta
 
 
@@ -180,7 +180,7 @@ def _leer_csv(ruta: str) -> pd.DataFrame:
     separador = ";" if primera_linea.count(";") > primera_linea.count(",") else ","
 
     df = pd.read_csv(ruta, sep=separador, encoding="utf-8-sig", dtype=str)
-    logger.info(f"CSV leído: {len(df)} filas, {len(df.columns)} columnas. Separador: '{separador}'")
+    logger.debug(f"CSV leído: {len(df)} filas, {len(df.columns)} columnas. Separador: '{separador}'")
 
     # Normalizar encabezados: quitar espacios extra
     df.columns = [c.strip() for c in df.columns]
@@ -234,7 +234,7 @@ def _limpiar_dataframe(df: pd.DataFrame) -> pd.DataFrame:
                           else (False if str(x).strip().lower() in ("false", "0", "no") else None)
             )
 
-    logger.info(f"DataFrame limpiado. Total filas: {len(df)}")
+    logger.debug(f"DataFrame limpiado. Total filas: {len(df)}")
     return df
 
 
@@ -242,10 +242,6 @@ async def main():
     """
     Función principal de sincronización del reporte de liquidaciones de Mercado Pago.
     """
-    logger.info("=" * 80)
-    logger.info("SINCRONIZACIÓN MP - REPORTE DE LIQUIDACIONES")
-    logger.info("=" * 80)
-
     inicio_proceso = datetime.now()
     api_client = MercadoPagoAPIClient(access_token=MERCADOPAGO["access_token"])
     ruta_temp = None
@@ -253,12 +249,11 @@ async def main():
     try:
         # 1. Calcular rango de fechas (últimos 5 días sin incluir el día actual)
         begin_date, end_date = _calcular_rango_fechas()
-        logger.info(f"Rango de fechas: {begin_date} → {end_date}")
+        logger.info(f"Iniciando sincronización. Rango: {begin_date} → {end_date}")
 
         # 3. Obtener snapshot de IDs de reportes ya existentes (antes de crear el nuevo)
         reportes_previos = await api_client.obtener_lista_reportes()
         ids_previos = {r.get("id") for r in reportes_previos if r.get("id") is not None}
-        logger.info(f"Reportes existentes antes de crear: {len(ids_previos)}")
 
         # 4. Crear el reporte
         reporte_info = await api_client.crear_reporte(begin_date, end_date)
@@ -270,9 +265,7 @@ async def main():
         status = reporte_info.get("status", "")
         file_name = reporte_info.get("file_name")  # Null en respuesta 202 (creación async)
 
-        logger.info(
-            f"Reporte solicitado. job_id={report_id} | status='{status}' | file_name='{file_name}'"
-        )
+        logger.info(f"Reporte solicitado. job_id={report_id}")
 
         # 5. Si el reporte no está listo inmediatamente, esperar con polling (máx. 20 min)
         # Se busca un reporte NUEVO (id no presente antes de la creación) con file_name disponible.
@@ -308,18 +301,15 @@ async def main():
 
         # Resumen final
         duracion = datetime.now() - inicio_proceso
-        logger.info("=" * 80)
-        logger.info("RESUMEN")
-        logger.info("=" * 80)
-        logger.info(f"Filas procesadas: {stats['insertados']} | Errores: {stats['errores']}")
-        logger.info(f"Duración total: {duracion.total_seconds():.1f} segundos")
-        logger.info("=" * 80)
-
         if stats["errores"] == 0:
-            logger.info("Sincronización completada exitosamente.")
+            logger.info(
+                f"Sincronización completada. Filas: {stats['insertados']} | "
+                f"Duración: {duracion.total_seconds():.1f}s"
+            )
         else:
             logger.warning(
-                f"Sincronización completada con {stats['errores']} errores. Revisar logs."
+                f"Sincronización completada con errores. Filas: {stats['insertados']} | "
+                f"Errores: {stats['errores']} | Duración: {duracion.total_seconds():.1f}s"
             )
 
     except Exception as e:
@@ -332,7 +322,7 @@ async def main():
         if ruta_temp and os.path.exists(ruta_temp):
             try:
                 os.remove(ruta_temp)
-                logger.info(f"Archivo temporal eliminado: {ruta_temp}")
+                logger.debug(f"Archivo temporal eliminado: {ruta_temp}")
             except OSError as e:
                 logger.warning(f"No se pudo eliminar el archivo temporal '{ruta_temp}': {e}")
 
