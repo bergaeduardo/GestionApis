@@ -42,33 +42,22 @@ def quick_test():
         print(f"❌ Error accediendo a impresora: {e}")
         return False
     
-    # 3. Prueba rápida de PDFtoPrinter (sin ventanas)
-    print("⏳ Probando PDFtoPrinter (modo silencioso)...")
+    # 3. Verificar que el archivo PDF existe
+    pdf_file = Path(__file__).parent / "etiqueta_andreani.pdf"
+    
+    if not pdf_file.exists():
+        print(f"❌ Archivo PDF no encontrado: {pdf_file}")
+        return False
+    
+    print("✅ Archivo etiqueta_andreani.pdf encontrado")
+    
+    # 4. Prueba de impresión del PDF real
+    print("⏳ Imprimiendo etiqueta_andreani.pdf (modo silencioso)...")
     
     try:
-        # Crear PDF mínimo
-        temp_dir = Path(__file__).parent / "temp"
-        temp_dir.mkdir(exist_ok=True)
-        test_pdf = temp_dir / "test_quick.pdf"
+        test_pdf = pdf_file
         
-        # PDF ultra-minimal
-        minimal_pdf = b"""%PDF-1.0
-1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
-2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
-3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 100]>>endobj
-xref 0 4
-0000000000 65535 f 
-0000000010 00000 n 
-0000000053 00000 n 
-0000000100 00000 n 
-trailer<</Size 4/Root 1 0 R>>
-startxref 159
-%%EOF"""
-        
-        with open(test_pdf, "wb") as f:
-            f.write(minimal_pdf)
-        
-        # Probar impresión real (modo silencioso)
+        # Enviar a impresión el archivo PDF real (modo silencioso)
         command = [
             pdftoprinter_path,
             str(test_pdf),
@@ -85,14 +74,11 @@ startxref 159
         
         elapsed_time = time.time() - start_time
         
-        # Limpiar archivo temporal
-        test_pdf.unlink()
-        
         print(f"⏱️  Tiempo: {elapsed_time:.1f}s")
         print(f"📊 Return code: {result.returncode}")
         
         if result.returncode == 0:
-            print("✅ PRUEBA DE IMPRESIÓN EXITOSA")
+            print("✅ IMPRESIÓN DEL ARCHIVO EXITOSA")
             return True
         else:
             print("⚠️  Error en impresión")
@@ -116,11 +102,11 @@ def main():
     print("\n" + "=" * 35)
     if success:
         print("🎉 ¡TODO FUNCIONANDO!")
-        print("✅ Puedes ejecutar sync_rotulos_andreani.py")
+        print("✅ etiqueta_andreani.pdf impreso correctamente")
         print("💡 El sistema de impresión está listo")
     else:
         print("❌ PROBLEMAS DETECTADOS")
-        print("🔧 Revisa la configuración o ejecuta diagnostico_impresion.py")
+        print("🔧 Verifica que el archivo exista o revisa la impresora")
     
     print("\n💭 Nota: Para problemas persistentes:")
     print("   • Verificar estado físico de la impresora")
