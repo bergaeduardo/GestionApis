@@ -35,9 +35,11 @@ class HasarAPIClient:
             aiohttp.ClientSession: Sesión HTTP configurada
         """
         if not self._session or self._session.closed:
-            timeout = aiohttp.ClientTimeout(total=30)
+            # connect: tiempo para establecer la conexión TCP
+            # sock_read: tiempo para leer la respuesta (más largo para APIs con 30d de datos horarios)
+            timeout = aiohttp.ClientTimeout(connect=10, sock_read=120)
             # Límites de conexión para prevenir saturación
-            connector = aiohttp.TCPConnector(limit=50, limit_per_host=10)
+            connector = aiohttp.TCPConnector(limit=20, limit_per_host=3)
             self._session = aiohttp.ClientSession(
                 timeout=timeout,
                 connector=connector
@@ -97,6 +99,18 @@ class HasarAPIClient:
                         logger.error(f"Endpoint no encontrado (404): {url}")
                         return None  # No reintentar en endpoints no encontrados
                     
+                    elif response.status == 429:
+                        # Rate limit: respetar Retry-After si viene en el header, sino backoff propio
+                        retry_after = response.headers.get('Retry-After')
+                        espera = int(retry_after) if retry_after and retry_after.isdigit() else 5 * (2 ** intento)
+                        if intento < max_retries - 1:
+                            logger.warning(f"Rate limit (429) en {url}. Reintentando en {espera}s (intento {intento + 1}/{max_retries})")
+                            await asyncio.sleep(espera)
+                            continue
+                        else:
+                            logger.error(f"Rate limit (429) persistente después de {max_retries} intentos: {url}")
+                            return None
+
                     elif response.status >= 500:
                         # Error del servidor, reintentar
                         if intento < max_retries - 1:
@@ -105,7 +119,7 @@ class HasarAPIClient:
                         else:
                             logger.error(f"Error del servidor ({response.status}) después de {max_retries} intentos: {url}")
                             return None
-                    
+
                     else:
                         text = await response.text()
                         logger.error(f"Error HTTP {response.status}: {text}")
@@ -211,10 +225,10 @@ class HasarAPIClient:
     def parsear_fecha(self, fecha_str: str) -> Optional[datetime]:
         """
         Parsea una fecha en formato "dd-mm-yyyy" a objeto datetime.
-        
+
         Args:
             fecha_str (str): Fecha en formato "dd-mm-yyyy" (ej: "06-04-2026")
-            
+
         Returns:
             datetime: Objeto datetime o None si hay error
         """
@@ -222,6 +236,23 @@ class HasarAPIClient:
             return datetime.strptime(fecha_str, "%d-%m-%Y")
         except ValueError as e:
             logger.error(f"Error al parsear fecha '{fecha_str}': {e}")
+            return None
+
+    def parsear_fecha_hora(self, fecha_hora_str: str) -> Optional[datetime]:
+        """
+        Parsea una fecha+hora en formato "dd-mm-yyyy H:MM AM/PM" a objeto datetime.
+        Formato devuelto por las APIs horarias (IN x HORA / Merodeo MES X hora).
+
+        Args:
+            fecha_hora_str (str): Fecha y hora (ej: "01-06-2026 1:00 AM", "01-06-2026 12:00 AM")
+
+        Returns:
+            datetime: Objeto datetime o None si hay error
+        """
+        try:
+            return datetime.strptime(fecha_hora_str, "%d-%m-%Y %I:%M %p")
+        except ValueError as e:
+            logger.error(f"Error al parsear fecha/hora '{fecha_hora_str}': {e}")
             return None
     
     async def close(self):

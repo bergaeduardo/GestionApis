@@ -55,18 +55,19 @@ async def procesar_sucursal(
         'apis_procesadas': 0,
         'apis_fallidas': 0,
         'registros_guardados': 0,
+        'registros_horarios_guardados': 0,
         'errores': []
     }
-    
+
     # Determinar la base de datos destino (todas las APIs de la sucursal usan la misma BD)
     database_name = configs_sucursal[0]['DATA_BASE']
-    
+
     # Llamar todas las APIs de la sucursal en paralelo
     tareas_api = []
     for config in configs_sucursal:
         tarea = api_client.obtener_datos(config['API'], config['Token'])
         tareas_api.append((config['NOMBRE_DASHBOARD'], tarea))
-    
+
     # Esperar a que todas las APIs respondan
     resultados_apis = {}
     for nombre_dashboard, tarea in tareas_api:
@@ -82,38 +83,40 @@ async def procesar_sucursal(
             logger.error(f"Error al procesar API '{nombre_dashboard}' de sucursal {nro_sucursal}: {e}")
             estadisticas['apis_fallidas'] += 1
             estadisticas['errores'].append(f"API {nombre_dashboard}: {str(e)}")
-    
-    # Si no se obtuvieron datos de ninguna API, terminar
+
     if not resultados_apis:
         return estadisticas
-    
-    # Combinar datos de ambas APIs (Ingreso y Merodeo) por fecha
+
+    # Separar APIs diarias de horarias por nombre de dashboard
+    # Horarias: contienen "x hora" en el nombre (ej: "IN x HORA", "Merodeo MES X hora")
+    apis_diarias = {k: v for k, v in resultados_apis.items() if 'x hora' not in k.lower()}
+    apis_horarias = {k: v for k, v in resultados_apis.items() if 'x hora' in k.lower()}
+
+    # --- Procesar APIs DIARIAS ---
     datos_por_fecha = defaultdict(lambda: {'ingresos': None, 'merodeo': None})
-    
-    for nombre_dashboard, respuesta in resultados_apis.items():
+
+    for nombre_dashboard, respuesta in apis_diarias.items():
         datos_extraidos = api_client.extraer_datos(respuesta)
-        
+
         es_ingreso = 'ingreso' in nombre_dashboard.lower()
         es_merodeo = 'merodeo' in nombre_dashboard.lower()
-        
+
         for item in datos_extraidos:
             fecha_obj = api_client.parsear_fecha(item['fecha'])
-            
+
             if not fecha_obj:
                 continue
-            
-            # Filtrar por rango de fechas solicitado
+
             if not (fecha_inicio <= fecha_obj <= fecha_fin):
                 continue
-            
+
             fecha_key = fecha_obj.date()
-            
+
             if es_ingreso:
                 datos_por_fecha[fecha_key]['ingresos'] = item['valor']
             elif es_merodeo:
                 datos_por_fecha[fecha_key]['merodeo'] = item['valor']
-    
-    # Guardar datos combinados en la base de datos
+
     for fecha, valores in datos_por_fecha.items():
         try:
             exito = db.upsert_ingresos(
@@ -123,14 +126,52 @@ async def procesar_sucursal(
                 ingresos=valores['ingresos'],
                 merodeo=valores['merodeo']
             )
-            
             if exito:
                 estadisticas['registros_guardados'] += 1
-                
         except Exception as e:
-            logger.error(f"Error al guardar datos de sucursal {nro_sucursal}, fecha {fecha}: {e}")
-            estadisticas['errores'].append(f"Fecha {fecha}: {str(e)}")
-    
+            logger.error(f"Error al guardar datos diarios de sucursal {nro_sucursal}, fecha {fecha}: {e}")
+            estadisticas['errores'].append(f"Diario {fecha}: {str(e)}")
+
+    # --- Procesar APIs HORARIAS ---
+    datos_por_fecha_hora = defaultdict(lambda: {'ingresos': None, 'merodeo': None})
+
+    for nombre_dashboard, respuesta in apis_horarias.items():
+        datos_extraidos = api_client.extraer_datos(respuesta)
+
+        es_ingreso = 'merodeo' not in nombre_dashboard.lower()
+        es_merodeo = 'merodeo' in nombre_dashboard.lower()
+
+        for item in datos_extraidos:
+            fecha_hora_obj = api_client.parsear_fecha_hora(item['fecha'])
+
+            if not fecha_hora_obj:
+                continue
+
+            # Filtrar por rango de fechas (comparar solo la porción date)
+            if not (fecha_inicio <= fecha_hora_obj <= fecha_fin):
+                continue
+
+            if es_ingreso:
+                datos_por_fecha_hora[fecha_hora_obj]['ingresos'] = item['valor']
+            elif es_merodeo:
+                datos_por_fecha_hora[fecha_hora_obj]['merodeo'] = item['valor']
+
+    for fecha_hora, valores in datos_por_fecha_hora.items():
+        try:
+            exito = db.upsert_ingresos_hora(
+                database_name=database_name,
+                fecha=fecha_hora.date(),
+                fecha_hora=fecha_hora,
+                nro_sucurs=nro_sucursal,
+                ingresos=valores['ingresos'],
+                merodeo=valores['merodeo']
+            )
+            if exito:
+                estadisticas['registros_horarios_guardados'] += 1
+        except Exception as e:
+            logger.error(f"Error al guardar datos horarios de sucursal {nro_sucursal}, fecha_hora {fecha_hora}: {e}")
+            estadisticas['errores'].append(f"Horario {fecha_hora}: {str(e)}")
+
     return estadisticas
 
 
@@ -189,9 +230,10 @@ async def main():
         total_apis_procesadas = 0
         total_apis_fallidas = 0
         total_registros_guardados = 0
+        total_registros_horarios_guardados = 0
         sucursales_exitosas = 0
         sucursales_con_errores = 0
-        
+
         for resultado in resultados:
             if isinstance(resultado, Exception):
                 logger.error(f"Error en procesamiento de sucursal: {resultado}")
@@ -200,26 +242,29 @@ async def main():
                 total_apis_procesadas += resultado.get('apis_procesadas', 0)
                 total_apis_fallidas += resultado.get('apis_fallidas', 0)
                 total_registros_guardados += resultado.get('registros_guardados', 0)
-                
-                if resultado.get('registros_guardados', 0) > 0:
+                total_registros_horarios_guardados += resultado.get('registros_horarios_guardados', 0)
+
+                if resultado.get('registros_guardados', 0) > 0 or resultado.get('registros_horarios_guardados', 0) > 0:
                     sucursales_exitosas += 1
                 if resultado.get('errores'):
                     sucursales_con_errores += 1
-        
+
         # Cerrar sesión HTTP
         await api_client.close()
-        
+
         # Resumen final
         duracion = datetime.now() - inicio_proceso
         logger.info("=" * 80)
         logger.info("RESUMEN")
         logger.info("=" * 80)
         logger.info(f"Sucursales procesadas: {sucursales_exitosas} | Con errores: {sucursales_con_errores}")
-        logger.info(f"Registros actualizados: {total_registros_guardados}")
+        logger.info(f"Registros diarios actualizados: {total_registros_guardados}")
+        logger.info(f"Registros horarios actualizados: {total_registros_horarios_guardados}")
         logger.info(f"Duración: {duracion.total_seconds():.1f} segundos")
         logger.info("=" * 80)
-        
-        if total_registros_guardados > 0:
+
+        total_guardados = total_registros_guardados + total_registros_horarios_guardados
+        if total_guardados > 0:
             logger.info("✓ Sincronización completada exitosamente")
         else:
             logger.warning("⚠ No se guardaron registros")

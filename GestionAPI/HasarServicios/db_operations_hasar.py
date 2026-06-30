@@ -19,9 +19,10 @@ from datetime import datetime
 from GestionAPI.common.conexion import Conexion
 from GestionAPI.common.credenciales import POWER_BI_CONTROL, POWER_BI_CONTROL_FRANQUICIAS
 from GestionAPI.HasarServicios.consultas import (
-    QRY_OBTENER_CONFIG, 
+    QRY_OBTENER_CONFIG,
     QRY_CONTAR_TOTAL,
     QRY_MERGE_INGRESOS,
+    QRY_MERGE_INGRESOS_HORA,
     QRY_VERIFICAR_DATOS
 )
 
@@ -176,6 +177,48 @@ class HasarDB:
             logger.error(f"Error al guardar datos en {database_name}: {e}")
             return False
     
+    def upsert_ingresos_hora(self, database_name, fecha, fecha_hora, nro_sucurs, ingresos=None, merodeo=None):
+        """
+        Inserta o actualiza un registro HORARIO en BI_T_INGRESOS_SUCURSALES.
+        Usa MERGE con clave (FECHA_HORA, NRO_SUCURS).
+
+        Args:
+            database_name (str): Nombre de la base de datos donde insertar
+            fecha (datetime.date): Fecha del registro (porción date de fecha_hora)
+            fecha_hora (datetime): Fecha y hora exacta del registro horario
+            nro_sucurs (int): Número de sucursal
+            ingresos (int, optional): Cantidad de ingresos. Si es None, se usa 0
+            merodeo (int, optional): Cantidad de merodeo. Puede ser None
+
+        Returns:
+            bool: True si la operación fue exitosa, False en caso contrario
+        """
+        try:
+            conexion = self._get_connection(database_name)
+            if not conexion:
+                logger.error(f"No se pudo conectar a la base de datos '{database_name}'")
+                return False
+
+            ingresos_val = ingresos if ingresos is not None else 0
+            merodeo_val = merodeo
+
+            params = (fecha, fecha_hora, nro_sucurs, ingresos_val, merodeo_val)
+            cursor = conexion.conectar()
+
+            if cursor:
+                cursor.execute(QRY_MERGE_INGRESOS_HORA, params)
+                conexion.connection.commit()
+                cursor.close()
+                conexion.connection.close()
+                return True
+            else:
+                logger.error(f"No se pudo obtener cursor para {database_name}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error al guardar datos horarios en {database_name}: {e}")
+            return False
+
     def verificar_datos_guardados(self, database_name, fecha_inicio, fecha_fin):
         """
         Verifica los datos guardados en un rango de fechas (útil para testing).
