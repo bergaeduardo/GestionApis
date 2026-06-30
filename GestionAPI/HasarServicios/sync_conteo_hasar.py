@@ -203,7 +203,7 @@ async def main():
         
         # Calcular rango de fechas: últimos 5 días excluyendo el día actual
         fecha_fin = datetime.now().date() - timedelta(days=1)  # Ayer
-        fecha_inicio = fecha_fin - timedelta(days=4)  # 5 días atrás desde ayer
+        fecha_inicio = fecha_fin - timedelta(days=9)  # 10 días atrás desde ayer
         
         # Agrupar configuraciones por sucursal
         configs_por_sucursal = defaultdict(list)
