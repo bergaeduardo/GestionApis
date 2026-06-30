@@ -262,7 +262,7 @@ class MercadoPagoAPIClient:
 
         Args:
             ids_previos (set): Conjunto de IDs de reportes que existían ANTES de crear el nuevo.
-            max_espera_seg (int): Tiempo máximo de espera en segundos (default: 1200 = 20 min).
+            max_espera_seg (int): Tiempo máximo de espera en segundos (default: 6300 = 60 min).
             intervalo_seg (int): Intervalo entre consultas en segundos (default: 15).
 
         Returns:
