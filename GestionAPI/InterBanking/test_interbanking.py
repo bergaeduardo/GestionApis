@@ -248,6 +248,9 @@ async def ejecutar_todos():
 
 
 if __name__ == "__main__":
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
     try:
         ok = asyncio.run(ejecutar_todos())
         sys.exit(0 if ok else 1)

@@ -138,6 +138,11 @@ if __name__ == "__main__":
         date_since = str(ayer - timedelta(days=dias - 1))
         date_until = str(ayer)
 
+    # Python 3.8 en Windows usa ProactorEventLoop que arroja RuntimeError al cerrar.
+    # SelectorEventLoopPolicy evita ese ruido sin afectar el comportamiento.
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
     try:
         asyncio.run(main(date_since, date_until))
     except KeyboardInterrupt:
