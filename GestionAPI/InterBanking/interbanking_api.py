@@ -144,6 +144,11 @@ class InterBankingAPIClient:
             'Accept': 'application/json',
         }
 
+        # DEBUG TEMPORAL — remover luego de diagnóstico
+        logger.info(f"[DEBUG] URL: {url}")
+        logger.info(f"[DEBUG] Params: {params}")
+        logger.info(f"[DEBUG] client_id (últimos 6): ...{self._client_id[-6:]}")
+
         for intento in range(max_retries):
             try:
                 session = await self._get_session()
@@ -167,7 +172,8 @@ class InterBankingAPIClient:
                         return None
 
                     if resp.status == 404:
-                        logger.warning("No se encontraron saldos (404).")
+                        text = await resp.text()
+                        logger.warning(f"No se encontraron saldos (404). Body: {text}")
                         return None
 
                     if resp.status >= 500 and intento < max_retries - 1:
