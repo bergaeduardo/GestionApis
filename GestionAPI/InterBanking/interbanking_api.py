@@ -609,7 +609,20 @@ class InterBankingAPIClient:
             cuit_cliente, cod_agrupamiento_ib, sucursal
         """
         movimientos = []
-        details = respuesta.get('movements_detail') or []
+        # El YAML documenta 'movements_detail' pero la API real puede usar 'movement_detail'
+        details = (
+            respuesta.get('movements_detail')
+            or respuesta.get('movement_detail')
+            or []
+        )
+
+        if not details:
+            # Log diagnóstico: muestra las claves reales de la respuesta
+            claves = list(respuesta.keys())
+            logger.warning(
+                f"extraer_movimientos_planos: sin datos en movements_detail ni movement_detail. "
+                f"Claves presentes en respuesta: {claves}"
+            )
 
         for mov in details:
             if not mov:
