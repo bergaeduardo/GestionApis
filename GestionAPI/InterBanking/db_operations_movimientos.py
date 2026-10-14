@@ -20,6 +20,7 @@ from GestionAPI.common.conexion import Conexion
 from GestionAPI.common.credenciales import INTERBANKING_DB
 from GestionAPI.InterBanking.consultas_movimientos import (
     QRY_CREATE_TABLE_MOVIMIENTOS,
+    QRY_MIGRATE_ID_TO_BIGINT,
     QRY_MERGE_MOVIMIENTO_DIA,
     QRY_OBTENER_CUENTAS,
     QRY_VERIFICAR_MOVIMIENTOS,
@@ -47,12 +48,15 @@ class InterBankingMovimientosDB:
         )
 
     def crear_tabla_si_no_existe(self) -> bool:
-        """Crea BI_T_MOVIMIENTOS_INTERBANKING si no existe."""
+        """Crea BI_T_MOVIMIENTOS_INTERBANKING si no existe y aplica migraciones."""
         try:
             conexion = self._get_connection()
             cursor = conexion.conectar()
             if cursor:
                 cursor.execute(QRY_CREATE_TABLE_MOVIMIENTOS)
+                conexion.connection.commit()
+                # Migración: INT → BIGINT en ID_MOVIMIENTO (IDs reales superan INT max)
+                cursor.execute(QRY_MIGRATE_ID_TO_BIGINT)
                 conexion.connection.commit()
                 cursor.close()
                 conexion.connection.close()
@@ -60,7 +64,7 @@ class InterBankingMovimientosDB:
                 return True
             return False
         except Exception as e:
-            logger.error(f"Error al crear tabla de movimientos: {e}")
+            logger.error(f"Error al crear/migrar tabla de movimientos: {e}")
             return False
 
     def obtener_cuentas(self) -> List[Dict[str, str]]:
