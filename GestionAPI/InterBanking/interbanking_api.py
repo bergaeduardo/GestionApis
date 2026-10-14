@@ -458,6 +458,195 @@ class InterBankingAPIClient:
 
         return movimientos
 
+    async def obtener_movimientos(
+        self,
+        account_number: str,
+        bank_number: str,
+        movement_type: str = 'dia',
+        account_type: str = 'CC',
+        currency: str = 'ARS',
+        date_since: Optional[str] = None,
+        date_until: Optional[str] = None,
+        page: int = 0,
+        limit: int = 100,
+        max_retries: int = 3,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Llama a GET /accounts/{account-number}/movements/{movement-type}.
+
+        movement_type:
+            'dia'       → movimientos del día en curso (tiempo real)
+            'diferidos' → movimientos programados con fecha futura
+            'anteriores'→ movimientos históricos (requiere date_since / date_until)
+
+        Args:
+            account_number: Número de cuenta bancaria.
+            bank_number:    Código BCRA de 3 dígitos (ej: '007').
+            movement_type:  'dia' | 'diferidos' | 'anteriores' (default: 'dia').
+            account_type:   'CC' | 'CA' (default: 'CC').
+            currency:       'ARS' | 'USD' (default: 'ARS').
+            date_since:     Fecha inicio yyyy-mm-dd (solo para 'anteriores').
+            date_until:     Fecha fin yyyy-mm-dd (solo para 'anteriores').
+            page:           Página a solicitar (default: 0).
+            limit:          Registros por página (default: 100).
+            max_retries:    Reintentos ante errores 5xx / timeout.
+
+        Returns:
+            Dict con la respuesta JSON o None ante error.
+        """
+        token = await self._obtener_token()
+        if not token:
+            logger.error("No se pudo obtener token. Abortando consulta de movimientos.")
+            return None
+
+        params: Dict[str, Any] = {
+            'customer-id': self._customer_id,
+            'bank-number': bank_number,
+            'account-type': account_type,
+            'currency': currency,
+            'page': str(page),
+            'limit': str(limit),
+        }
+        if date_since:
+            params['date-since'] = date_since
+        if date_until:
+            params['date-until'] = date_until
+
+        url = f"{self._base_url}/accounts/{account_number}/movements/{movement_type}"
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'client_id': self._client_id,
+            'Accept': 'application/json',
+        }
+
+        for intento in range(max_retries):
+            try:
+                session = await self._get_session()
+                async with session.get(url, headers=headers, params=params) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+
+                    if resp.status == 401:
+                        logger.warning("Token IBK rechazado (401). Forzando renovación.")
+                        self._access_token = None
+                        token = await self._obtener_token()
+                        if not token:
+                            return None
+                        headers['Authorization'] = f'Bearer {token}'
+                        continue
+
+                    if resp.status == 404:
+                        logger.warning(
+                            f"Sin movimientos para cuenta {account_number} "
+                            f"banco {bank_number} tipo {movement_type} (404)."
+                        )
+                        return None
+
+                    if resp.status == 400:
+                        text = await resp.text()
+                        logger.error(
+                            f"Parámetros inválidos en movements/{movement_type} "
+                            f"cuenta {account_number} (400): {text}"
+                        )
+                        return None
+
+                    if resp.status >= 500 and intento < max_retries - 1:
+                        await asyncio.sleep(2 ** intento)
+                        continue
+
+                    text = await resp.text()
+                    logger.error(
+                        f"Error HTTP {resp.status} en movements/{movement_type} "
+                        f"cuenta {account_number}: {text}"
+                    )
+                    return None
+
+            except asyncio.TimeoutError:
+                if intento < max_retries - 1:
+                    await asyncio.sleep(2 ** intento)
+                else:
+                    logger.error(
+                        f"Timeout en movements/{movement_type} cuenta {account_number} "
+                        f"tras {max_retries} intentos."
+                    )
+                    return None
+
+            except aiohttp.ClientError as e:
+                if intento < max_retries - 1:
+                    await asyncio.sleep(2 ** intento)
+                else:
+                    logger.error(f"Error de conexión en movimientos ({account_number}): {e}")
+                    return None
+
+            except Exception as e:
+                logger.error(f"Error inesperado en movimientos ({account_number}): {e}")
+                return None
+
+        return None
+
+    def extraer_movimientos_planos(
+        self,
+        respuesta: Dict[str, Any],
+        bank_number: str,
+        account_number: str,
+        account_type: str,
+        currency: str,
+        movement_type: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        Aplana la respuesta de /accounts/{account-number}/movements/{movement-type}
+        en una lista de movimientos listos para persistir en SQL Server.
+
+        La respuesta es plana: movements_detail[] (sin jerarquía de días).
+
+        Returns:
+            Lista de dicts con las claves:
+            nro_banco, nro_cuenta, tipo_cuenta, moneda, tipo_movimiento,
+            id_movimiento, fecha_proceso, tipo_deb_cred, importe,
+            nro_comprobante, cod_operacion_ib, cod_operacion_banco,
+            desc_operacion_ib, desc_operacion_banco,
+            cbu_cuenta, cod_depositante, desc_depositante,
+            cuit_cliente, cod_agrupamiento_ib, sucursal
+        """
+        movimientos = []
+        details = respuesta.get('movements_detail') or []
+
+        for mov in details:
+            if not mov:
+                continue
+
+            id_mov = mov.get('id')
+            if id_mov is None:
+                logger.debug(
+                    f"Movimiento sin id en {account_number} tipo {movement_type}, omitido."
+                )
+                continue
+
+            movimientos.append({
+                'nro_banco':           bank_number,
+                'nro_cuenta':          account_number,
+                'tipo_cuenta':         account_type,
+                'moneda':              currency,
+                'tipo_movimiento':     movement_type,
+                'id_movimiento':       id_mov,
+                'fecha_proceso':       mov.get('process_date'),
+                'tipo_deb_cred':       mov.get('debit_credit_type'),
+                'importe':             mov.get('amount'),
+                'nro_comprobante':     mov.get('voucher_number'),
+                'cod_operacion_ib':    mov.get('operation_code_ib'),
+                'cod_operacion_banco': mov.get('operation_code_bank'),
+                'desc_operacion_ib':   mov.get('code_description_ib'),
+                'desc_operacion_banco': mov.get('code_description_bank'),
+                'cbu_cuenta':          mov.get('account_cbu'),
+                'cod_depositante':     mov.get('depositor_code'),
+                'desc_depositante':    mov.get('depositor_description'),
+                'cuit_cliente':        mov.get('customer_cuit'),
+                'cod_agrupamiento_ib': mov.get('grouping_code_ib'),
+                'sucursal':            mov.get('branch_office_activity'),
+            })
+
+        return movimientos
+
     async def close(self):
         if self._session and not self._session.closed:
             await self._session.close()
