@@ -624,21 +624,20 @@ class InterBankingAPIClient:
                 f"Claves presentes en respuesta: {claves}"
             )
 
-        sin_id_count = 0
         for mov in details:
             if not mov:
                 continue
 
+            # Algunas entidades bancarias no devuelven el campo 'id'; usamos
+            # voucher_number como identificador alternativo en ese caso.
             id_mov = mov.get('id')
             if id_mov is None:
-                sin_id_count += 1
-                if sin_id_count == 1:
-                    # Primera vez: logueamos las claves reales del item para diagnóstico
-                    logger.warning(
-                        f"extraer_movimientos_planos: item sin campo 'id' en "
-                        f"{account_number}/{movement_type}. "
-                        f"Claves del item: {list(mov.keys())}"
-                    )
+                id_mov = mov.get('voucher_number')
+            if id_mov is None:
+                logger.debug(
+                    f"Movimiento sin id ni voucher_number en "
+                    f"{account_number}/{movement_type}, omitido."
+                )
                 continue
 
             movimientos.append({
@@ -663,13 +662,6 @@ class InterBankingAPIClient:
                 'cod_agrupamiento_ib': mov.get('grouping_code_ib'),
                 'sucursal':            mov.get('branch_office_activity'),
             })
-
-        if sin_id_count > 0:
-            logger.warning(
-                f"extraer_movimientos_planos: {sin_id_count} item(s) sin campo 'id' "
-                f"omitidos en {account_number}/{movement_type}. "
-                f"Total extraídos: {len(movimientos)}"
-            )
 
         return movimientos
 
