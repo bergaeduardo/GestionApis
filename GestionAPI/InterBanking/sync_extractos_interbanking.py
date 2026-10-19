@@ -105,10 +105,18 @@ async def sincronizar_cuenta(
     return stats
 
 
-async def main(date_since: str, date_until: str):
+async def main(ranges: list, purgar: bool = False):
+    """
+    Sincroniza extractos para uno o más rangos de fecha.
+
+    Args:
+        ranges: lista de tuplas (date_since, date_until) en formato 'YYYY-MM-DD'.
+        purgar: si True, elimina registros anteriores al mes anterior tras la sync.
+    """
     logger.info("=" * 80)
     logger.info("SINCRONIZACIÓN INTERBANKING — EXTRACTOS")
-    logger.info(f"Rango: {date_since}  →  {date_until}")
+    for ds, du in ranges:
+        logger.info(f"Rango: {ds}  →  {du}")
     logger.info("=" * 80)
 
     inicio_proceso = datetime.now()
@@ -134,18 +142,20 @@ async def main(date_since: str, date_until: str):
         total_ok = 0
         total_error = 0
 
-        for i, cuenta in enumerate(cuentas, 1):
-            logger.info(
-                f"\n[{i}/{len(cuentas)}] Banco {cuenta['nro_banco']} — "
-                f"Cuenta {cuenta['nro_cuenta']}"
-            )
-            stats = await sincronizar_cuenta(api_client, db, cuenta, date_since, date_until)
-            logger.info(
-                f"  Movimientos guardados: {stats['ok']} | "
-                f"Errores: {stats['error']}"
-            )
-            total_ok    += stats['ok']
-            total_error += stats['error']
+        for rango_idx, (date_since, date_until) in enumerate(ranges, 1):
+            logger.info(f"\n--- Rango {rango_idx}/{len(ranges)}: {date_since} → {date_until} ---")
+            for i, cuenta in enumerate(cuentas, 1):
+                logger.info(
+                    f"\n[{i}/{len(cuentas)}] Banco {cuenta['nro_banco']} — "
+                    f"Cuenta {cuenta['nro_cuenta']}"
+                )
+                stats = await sincronizar_cuenta(api_client, db, cuenta, date_since, date_until)
+                logger.info(
+                    f"  Movimientos guardados: {stats['ok']} | "
+                    f"Errores: {stats['error']}"
+                )
+                total_ok    += stats['ok']
+                total_error += stats['error']
 
         duracion = datetime.now() - inicio_proceso
         logger.info("\n" + "=" * 80)
@@ -162,6 +172,11 @@ async def main(date_since: str, date_until: str):
         else:
             logger.warning(f"⚠ Sincronización completada con {total_error} errores")
 
+        if purgar:
+            logger.info("\n--- Purgando registros históricos ---")
+            corte = _primer_dia_mes_anterior()
+            db.purgar_historicos(corte)
+
     except Exception as e:
         logger.error(f"Error crítico en sincronización de extractos: {e}", exc_info=True)
         raise
@@ -169,18 +184,45 @@ async def main(date_since: str, date_until: str):
         await api_client.close()
 
 
-def _mes_anterior():
-    """Retorna (date_since, date_until) del mes calendario anterior."""
+def _primer_dia_mes_anterior() -> date:
+    """Retorna el primer día del mes anterior."""
     hoy = date.today()
-    primer_dia_mes_actual = hoy.replace(day=1)
-    ultimo_dia_mes_anterior = primer_dia_mes_actual - timedelta(days=1)
-    primer_dia_mes_anterior = ultimo_dia_mes_anterior.replace(day=1)
-    return str(primer_dia_mes_anterior), str(ultimo_dia_mes_anterior)
+    primer_dia_actual = hoy.replace(day=1)
+    ultimo_dia_ant = primer_dia_actual - timedelta(days=1)
+    return ultimo_dia_ant.replace(day=1)
+
+
+def _mes_anterior() -> tuple:
+    """Retorna (date_since, date_until) del mes calendario anterior."""
+    primer = _primer_dia_mes_anterior()
+    hoy = date.today()
+    primer_dia_actual = hoy.replace(day=1)
+    ultimo_dia_ant = primer_dia_actual - timedelta(days=1)
+    return str(primer), str(ultimo_dia_ant)
+
+
+def _dos_meses() -> list:
+    """
+    Retorna dos rangos: mes anterior completo + mes en curso hasta hoy.
+    Siempre se generan rangos separados para respetar el límite de 60 días de la API.
+    """
+    hoy = date.today()
+    primer_dia_actual = hoy.replace(day=1)
+    ultimo_dia_ant = primer_dia_actual - timedelta(days=1)
+    primer_dia_ant = ultimo_dia_ant.replace(day=1)
+    return [
+        (str(primer_dia_ant), str(ultimo_dia_ant)),   # mes anterior completo
+        (str(primer_dia_actual), str(hoy)),            # mes en curso hasta hoy
+    ]
 
 
 def _parse_args():
     parser = argparse.ArgumentParser(description="Sincronización de extractos InterBanking")
     group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        '--dos-meses', action='store_true', default=False,
+        help='Sincroniza mes anterior completo + mes en curso hasta hoy (recomendado para cron)'
+    )
     group.add_argument(
         '--mes', type=str, default=None,
         help='Mes a procesar en formato YYYY-MM (default: mes anterior)'
@@ -193,32 +235,41 @@ def _parse_args():
         '--hasta', type=str, default=None,
         help='Fecha fin yyyy-mm-dd (usado junto a --desde)'
     )
+    parser.add_argument(
+        '--purgar', action='store_true', default=False,
+        help='Elimina registros anteriores al mes anterior tras la sincronización'
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = _parse_args()
 
-    if args.desde:
+    if args.dos_meses:
+        ranges = _dos_meses()
+    elif args.desde:
         date_since = args.desde
         date_until = args.hasta or str(date.today() - timedelta(days=1))
+        ranges = [(date_since, date_until)]
     elif args.mes:
         try:
             año, mes = map(int, args.mes.split('-'))
             _, ultimo_dia = monthrange(año, mes)
             date_since = f"{año:04d}-{mes:02d}-01"
             date_until = f"{año:04d}-{mes:02d}-{ultimo_dia:02d}"
+            ranges = [(date_since, date_until)]
         except ValueError:
             print("Error: --mes debe tener formato YYYY-MM (ej: 2026-09)")
             sys.exit(1)
     else:
         date_since, date_until = _mes_anterior()
+        ranges = [(date_since, date_until)]
 
     if sys.platform == 'win32':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     try:
-        asyncio.run(main(date_since, date_until))
+        asyncio.run(main(ranges, purgar=args.purgar))
     except KeyboardInterrupt:
         logger.info("Sincronización interrumpida por el usuario")
     except Exception as e:

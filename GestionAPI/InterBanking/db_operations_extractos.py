@@ -24,6 +24,7 @@ from GestionAPI.InterBanking.consultas_extractos import (
     QRY_OBTENER_CUENTAS,
     QRY_VERIFICAR_EXTRACTOS,
     QRY_LIMPIAR_EXTRACTOS_TEST,
+    QRY_PURGAR_HISTORICOS,
 )
 
 logger = logging.getLogger(__name__)
@@ -198,3 +199,33 @@ class InterBankingExtractosDB:
         except Exception as e:
             logger.error(f"Error al verificar extractos: {e}")
             return []
+
+    def purgar_historicos(self, primer_dia_mes_anterior) -> int:
+        """
+        Borra registros con FECHA_OPERACION anterior al mes anterior.
+        Conserva el mes anterior completo + el mes en curso.
+
+        Args:
+            primer_dia_mes_anterior: date — primer día del mes anterior (corte inferior).
+
+        Returns:
+            Cantidad de filas eliminadas; -1 si hubo error.
+        """
+        try:
+            conexion = self._get_connection()
+            cursor = conexion.conectar()
+            if cursor:
+                cursor.execute(QRY_PURGAR_HISTORICOS, (primer_dia_mes_anterior,))
+                eliminados = cursor.rowcount
+                conexion.connection.commit()
+                cursor.close()
+                conexion.connection.close()
+                logger.info(
+                    f"Purga completada: {eliminados} registros eliminados "
+                    f"(anteriores a {primer_dia_mes_anterior})"
+                )
+                return eliminados
+            return -1
+        except Exception as e:
+            logger.error(f"Error al purgar históricos: {e}")
+            return -1
